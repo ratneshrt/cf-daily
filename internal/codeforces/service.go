@@ -25,7 +25,7 @@ func (s *Service) GetRandomProblem(ctx context.Context, minRating, maxRating int
 	var filtered []Problem
 
 	for _, problem := range problems {
-		if problem.Raitng >= minRating && problem.Raitng <= maxRating {
+		if problem.Rating >= minRating && problem.Rating <= maxRating {
 			filtered = append(filtered, problem)
 		}
 	}

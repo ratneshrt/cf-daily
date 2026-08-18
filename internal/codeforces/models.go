@@ -1,11 +1,20 @@
 package codeforces
 
+import "fmt"
+
 type Problem struct {
 	ContestId int      `json:"contestId"`
 	Index     string   `json:"index"`
 	Name      string   `json:"name"`
-	Raitng    int      `json:"rating"`
+	Rating    int      `json:"rating"`
 	Tags      []string `json:"tags"`
+}
+
+func (p Problem) URL() string {
+	return fmt.Sprintf(
+		"https://codeforces.com/contest/%d/problem/%s", p.ContestId,
+		p.Index,
+	)
 }
 
 type ProblemSetResult struct {

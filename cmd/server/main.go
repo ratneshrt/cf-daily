@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/ratneshrt/cf-daily/internal/codeforces"
 	"github.com/ratneshrt/cf-daily/internal/config"
 	"github.com/ratneshrt/cf-daily/internal/database"
 	handler "github.com/ratneshrt/cf-daily/internal/handler"
@@ -38,9 +39,24 @@ func main() {
 
 	defer db.Close()
 
+	codeforcesClient := codeforces.NewClient()
+
+	codeforcesSerive := codeforces.NewService(
+		codeforcesClient,
+	)
+
+	healthHandler := handler.Health
+
+	problemHandler := handler.NewProblemHandler(
+		codeforcesSerive,
+		cfg.MinRating,
+		cfg.MaxRating,
+	)
+
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /health", handler.Health)
+	mux.HandleFunc("GET /health", healthHandler)
+	mux.HandleFunc("GET /problem", problemHandler.GetProblem)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
