@@ -7,11 +7,12 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	MinRating     int
-	MaxRating     int
-	TelegramToken string
+	Port                  string
+	DatabaseURL           string
+	MinRating             int
+	MaxRating             int
+	TelegramBotToken      string
+	TelegramWebhookSecret string
 }
 
 func Load() (Config, error) {
@@ -26,11 +27,12 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Port:          getEnv("PORT", "8080"),
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		MinRating:     minRating,
-		MaxRating:     maxRating,
-		TelegramToken: os.Getenv("TELEGRAM_BOT_TOKEN"),
+		Port:                  getEnv("PORT", "8080"),
+		DatabaseURL:           os.Getenv("DATABASE_URL"),
+		MinRating:             minRating,
+		MaxRating:             maxRating,
+		TelegramBotToken:      os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramWebhookSecret: os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
 	}, nil
 }
 

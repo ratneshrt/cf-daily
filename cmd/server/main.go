@@ -13,6 +13,7 @@ import (
 	"github.com/ratneshrt/cf-daily/internal/handler"
 	"github.com/ratneshrt/cf-daily/internal/repository"
 	"github.com/ratneshrt/cf-daily/internal/service"
+	"github.com/ratneshrt/cf-daily/internal/telegram"
 )
 
 func main() {
@@ -65,11 +66,17 @@ func main() {
 		cfg.MaxRating,
 	)
 
+	// -------- telegram
+	telegramClient := telegram.NewClient(cfg.TelegramBotToken)
+
+	telegramHandler := handler.NewTelegeamHandler(telegramClient, cfg.TelegramWebhookSecret)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /problem", problemHandler.GetProblem)
 	mux.HandleFunc("GET /problem/today", dailyProblemHandler.GetToday)
+	mux.HandleFunc("POST /telegram/webhook", telegramHandler.Webhook)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
