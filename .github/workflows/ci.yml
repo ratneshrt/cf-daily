@@ -50,7 +50,7 @@ jobs:
         with:
           registry: ghrc.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GH_TOKEN }}
       
       - name:
         run: |
