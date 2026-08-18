@@ -63,6 +63,7 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 	err := r.db.QueryRow(
 		ctx,
 		query,
+		date,
 		problem.ContestId,
 		problem.Index,
 		problem.Name,
@@ -78,9 +79,23 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 		&dailyproblem.URL,
 	)
 
-	if err != nil {
-		return nil, fmt.Errorf("creating daily problem: %w", err)
+	if err == nil {
+		return &dailyproblem, nil
 	}
 
-	return &dailyproblem, nil
+	if errors.Is(err, pgx.ErrNoRows) {
+		exisitngProblem, err := r.GetByDate(ctx, date)
+
+		if err != nil {
+			return nil, fmt.Errorf("getting existing daily problem after conflict: %w", err)
+		}
+
+		if exisitngProblem == nil {
+			return nil, fmt.Errorf("daily problem disappeared after conflict")
+		}
+
+		return exisitngProblem, nil
+	}
+
+	return nil, fmt.Errorf("creating daily problem: %w", err)
 }

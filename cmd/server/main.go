@@ -11,7 +11,9 @@ import (
 	"github.com/ratneshrt/cf-daily/internal/codeforces"
 	"github.com/ratneshrt/cf-daily/internal/config"
 	"github.com/ratneshrt/cf-daily/internal/database"
-	handler "github.com/ratneshrt/cf-daily/internal/handler"
+	"github.com/ratneshrt/cf-daily/internal/handler"
+	"github.com/ratneshrt/cf-daily/internal/repository"
+	"github.com/ratneshrt/cf-daily/internal/service"
 )
 
 func main() {
@@ -39,16 +41,28 @@ func main() {
 
 	defer db.Close()
 
+	// ------- Codeforces
 	codeforcesClient := codeforces.NewClient()
 
-	codeforcesSerive := codeforces.NewService(
+	codeforcesService := codeforces.NewService(
 		codeforcesClient,
 	)
+	// ---------
 
+	// --------- Daily Problem
+	dailyProblemRepository := repository.NewDailyProblemRepository(db)
+
+	dailyProblemService := service.NewDailyProblemService(dailyProblemRepository, codeforcesService, cfg.MinRating, cfg.MaxRating)
+
+	dailyProblemHandler := handler.NewDailyProblemHandler(dailyProblemService)
+	// -----------
+
+	// ------------ health
 	healthHandler := handler.Health
+	// ------------
 
 	problemHandler := handler.NewProblemHandler(
-		codeforcesSerive,
+		codeforcesService,
 		cfg.MinRating,
 		cfg.MaxRating,
 	)
@@ -57,6 +71,7 @@ func main() {
 
 	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /problem", problemHandler.GetProblem)
+	mux.HandleFunc("GET /problem/today", dailyProblemHandler.GetToday)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
