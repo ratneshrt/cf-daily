@@ -9,13 +9,13 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
   
     steps:
       - name: Checkout code
@@ -52,14 +52,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GH_TOKEN }}
       
-      - name:
-        run: |
-          docker build \
-            -t ghcr.io/${{ github.repository }}:latest \
-            -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
-            .
-      
-      - name:
-        run: |
-          docker push ghcr.io/${{ github.repository }}:latest
-          docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
