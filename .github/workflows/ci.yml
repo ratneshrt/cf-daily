@@ -60,3 +60,14 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+      - name: Test VM SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ vars.VM_HOST }}
+          username: ${{ vars.VM_USER }}
+          key: ${{ secrets.CF_DEPLOY_KEY }}
+          script: |
+            echo "Connected to GCP VM"
+            whoami
+            docker --version
