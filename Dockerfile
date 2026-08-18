@@ -12,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o cf-daily \
     ./cmd/server
 
-FROM alphine:3.22
+FROM alpine:3.22
 
 WORKDIR /app
 
