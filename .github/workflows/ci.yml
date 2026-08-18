@@ -61,13 +61,41 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
-      - name: Test VM SSH
+      - name: Deploy to VM
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ vars.VM_HOST }}
           username: ${{ vars.VM_USER }}
           key: ${{ secrets.CF_DEPLOY_KEY }}
           script: |
-            echo "Connected to GCP VM"
-            whoami
-            docker --version
+            set -e
+
+            echo "Logging into GHCR..."
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ vars.GHCR_USERNAME }}" \
+              --password-stdin
+
+            echo "Pulling latest image..."
+            docker pull ghcr.io/${{ github.repository }}:latest
+
+            echo "Stopping old container..."
+            docker stop cf-daily || true
+
+            echo "Removing old container..."
+            docker rm cf-daily || true
+
+            echo "Starting new container..."
+            docker run -d \
+              --name cf-daily \
+              --restart unless-stopped \
+              --env-file ~/cf-daily/rating.env \
+              -p 127.0.0.1:8080:8080 \
+              ghcr.io/${{ github.repository }}:latest
+
+            echo "Waiting for application..."
+            sleep 5
+
+            echo "Health check..."
+            curl --fail http://localhost:8080/health
+
+            echo "Deployment successful!"
