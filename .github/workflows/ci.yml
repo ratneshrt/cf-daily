@@ -71,31 +71,51 @@ jobs:
             set -e
 
             echo "Logging into GHCR..."
+
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-              -u "${{ vars.GHCR_USERNAME }}" \
+              -u "ratneshrt" \
               --password-stdin
 
-            echo "Pulling latest image..."
-            docker pull ghcr.io/${{ github.repository }}:latest
+            echo "Creating environment file..."
+
+            cat > ~/cf-daily/rating.env <<EOF
+            PORT=${{ vars.PORT }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            MIN_RATING=${{ vars.MIN_RATING }}
+            MAX_RATING=${{ vars.MAX_RATING }}
+            TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+            TELEGRAM_WEBHOOK_SECRET=${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+            EOF
+
+            chmod 600 ~/cf-daily/rating.env
+
+            echo "Pulling image..."
+
+            docker pull ghcr.io/${{ github.repository }}:${{ github.sha }}
 
             echo "Stopping old container..."
+
             docker stop cf-daily || true
 
             echo "Removing old container..."
+
             docker rm cf-daily || true
 
             echo "Starting new container..."
+
             docker run -d \
               --name cf-daily \
               --restart unless-stopped \
               --env-file ~/cf-daily/rating.env \
               -p 127.0.0.1:8080:8080 \
-              ghcr.io/${{ github.repository }}:latest
+              ghcr.io/${{ github.repository }}:${{ github.sha }}
 
             echo "Waiting for application..."
+
             sleep 5
 
             echo "Health check..."
+
             curl --fail http://localhost:8080/health
 
             echo "Deployment successful!"
