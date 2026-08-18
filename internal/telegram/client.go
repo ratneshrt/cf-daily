@@ -50,6 +50,9 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sending telegram req: %w", err)
+	}
 
 	defer resp.Body.Close()
 
