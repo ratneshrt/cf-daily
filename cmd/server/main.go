@@ -82,7 +82,15 @@ func main() {
 		telegramClient,
 	)
 
+	telegramNotificationService := service.NewTelegramNotificationService(
+		telegramUserRepository,
+		dailyProblemRepository,
+		telegramProblemMessageRepository,
+		telegramClient,
+	)
+
 	telegramHandler := handler.NewTelegeamHandler(telegramService, cfg.TelegramWebhookSecret)
+	telegramNotificationHandler := handler.NewTelegramNotificationHandler(telegramNotificationService)
 
 	mux := http.NewServeMux()
 
@@ -90,6 +98,7 @@ func main() {
 	mux.HandleFunc("GET /problem", problemHandler.GetProblem)
 	mux.HandleFunc("GET /problem/today", dailyProblemHandler.GetToday)
 	mux.HandleFunc("POST /telegram/webhook", telegramHandler.Webhook)
+	mux.HandleFunc("POST /telegram/send-daily-problem", telegramNotificationHandler.SendDailyProblem)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,

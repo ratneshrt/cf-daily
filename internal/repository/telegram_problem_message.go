@@ -78,3 +78,35 @@ func (r *TelegramProblemMessageRepository) GetByMessageID(ctx context.Context, t
 
 	return &message, nil
 }
+
+func (r *TelegramProblemMessageRepository) GetByUserAndProblem(ctx context.Context, telegramUserID int64, dailyProblemID int64) (*model.TelegramProblemMessage, error) {
+	query := `SELECT id, telegram_user_id, daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND daily_problem_id = $2`
+
+	var message model.TelegramProblemMessage
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		telegramUserID,
+		dailyProblemID,
+	).Scan(
+		&message.ID,
+		&message.TelegramUserID,
+		&message.DailyProblemID,
+		&message.TelegramMessageID,
+		&message.SentAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"getting telegram problem message: %w",
+			err,
+		)
+	}
+
+	return &message, nil
+}

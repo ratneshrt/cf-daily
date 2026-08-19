@@ -1,0 +1,174 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/ratneshrt/cf-daily/internal/model"
+	"github.com/ratneshrt/cf-daily/internal/repository"
+	"github.com/ratneshrt/cf-daily/internal/telegram"
+)
+
+type TelegramNotificationService struct {
+	userRepository           *repository.TelegramUserRepository
+	dailyProblemRepository   *repository.DailyProblemRepository
+	problemMessageRepository *repository.TelegramProblemMessageRepository
+	telegramClient           *telegram.Client
+}
+
+func NewTelegramNotificationService(userRepository *repository.TelegramUserRepository, dailyProblemRepository *repository.DailyProblemRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client) *TelegramNotificationService {
+	return &TelegramNotificationService{
+		userRepository:           userRepository,
+		dailyProblemRepository:   dailyProblemRepository,
+		problemMessageRepository: problemMessageRepository,
+		telegramClient:           telegramClient,
+	}
+}
+
+func (s *TelegramNotificationService) SendDailyProblem(ctx context.Context, date time.Time) error {
+	problem, err := s.dailyProblemRepository.GetByDate(
+		ctx,
+		date,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting daily problem: %w",
+			err,
+		)
+	}
+
+	if problem == nil {
+		return fmt.Errorf(
+			"no daily problem found %s",
+			date.Format("2006-01-02"),
+		)
+	}
+
+	users, err := s.userRepository.GetActiveUsers(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"getting active telegram users: %w",
+			err,
+		)
+	}
+
+	message := buildDailyProblemMessage(problem)
+
+	for _, user := range users {
+		existingMessage, err := s.problemMessageRepository.GetByUserAndProblem(
+			ctx,
+			user.TelegramUserID,
+			problem.ID,
+		)
+
+		if err != nil {
+			slog.Error(
+				"failed to check existing telegram problem message",
+				"telegram_user_id",
+				user.TelegramUserID,
+				"daily_problem_id",
+				problem.ID,
+				"error",
+				err,
+			)
+			continue
+		}
+
+		if existingMessage != nil {
+			slog.Info(
+				"daily problem already sent",
+				"telegram_user_id",
+				user.TelegramUserID,
+				"daily_problem_id",
+				problem.ID,
+				"telegram_message_id",
+				existingMessage.TelegramMessageID,
+			)
+			continue
+		}
+
+		sentMessage, err := s.telegramClient.SendMessage(
+			ctx,
+			user.ChatID,
+			message,
+		)
+
+		if err != nil {
+			slog.Error(
+				"failed to send daily problem",
+				"telegram_user_id",
+				user.TelegramUserID,
+				"error",
+				err,
+			)
+			continue
+		}
+
+		_, err = s.problemMessageRepository.Create(
+			ctx,
+			user.TelegramUserID,
+			problem.ID,
+			sentMessage.MessageID,
+		)
+
+		if err != nil {
+			slog.Error(
+				"failed to save telegram problem message",
+				"telegram_user_id",
+				user.TelegramUserID,
+				"error",
+				err,
+			)
+			continue
+		}
+	}
+
+	return nil
+
+}
+
+func buildDailyProblemMessage(problem *model.DailyProblem) string {
+	var builder strings.Builder
+
+	builder.WriteString("🔥 TODAY'S CODEFORCES PROBLEM\n\n")
+
+	builder.WriteString("📌 Problem: ")
+	builder.WriteString(problem.Name)
+	builder.WriteString("\n\n")
+
+	builder.WriteString("⭐ Rating: ")
+	builder.WriteString(fmt.Sprintf("%d", problem.Rating))
+	builder.WriteString("\n\n")
+
+	if len(problem.Tags) > 0 {
+		builder.WriteString("🏷 Tags:\n")
+		builder.WriteString(strings.Join(problem.Tags, " • "))
+		builder.WriteString("\n\n")
+	}
+
+	builder.WriteString("🔗 ")
+	builder.WriteString(problem.URL)
+	builder.WriteString("\n\n")
+
+	builder.WriteString("\n\n")
+
+	builder.WriteString(
+		"💻 Submit your solution by replying to THIS message:\n\n",
+	)
+
+	builder.WriteString("/submit\n")
+	builder.WriteString("<your code>\n\n")
+
+	builder.WriteString("✏️ Edit:\n")
+	builder.WriteString("/edit\n")
+	builder.WriteString("<new code>\n\n")
+
+	builder.WriteString("🗑 Delete:\n")
+	builder.WriteString("/delete")
+
+	return builder.String()
+}
