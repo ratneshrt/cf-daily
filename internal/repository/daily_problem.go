@@ -23,7 +23,7 @@ func NewDailyProblemRepository(db *pgxpool.Pool) *DailyProblemRepository {
 }
 
 func (r *DailyProblemRepository) GetByDate(ctx context.Context, date time.Time) (*model.DailyProblem, error) {
-	query := `SELECT id,assigned_date,contest_id,problem_index,name,rating,url FROM daily_problems WHERE assigned_date = $1`
+	query := `SELECT id,assigned_date,contest_id,problem_index,name,rating,url,tags FROM daily_problems WHERE assigned_date = $1`
 
 	var problem model.DailyProblem
 
@@ -39,6 +39,7 @@ func (r *DailyProblemRepository) GetByDate(ctx context.Context, date time.Time) 
 		&problem.Name,
 		&problem.Rating,
 		&problem.URL,
+		&problem.Tags,
 	)
 
 	if err != nil {

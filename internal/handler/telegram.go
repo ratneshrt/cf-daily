@@ -4,18 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/ratneshrt/cf-daily/internal/service"
 	"github.com/ratneshrt/cf-daily/internal/telegram"
 )
 
 type TelegramHandler struct {
-	client *telegram.Client
-	secret string
+	service *service.TelegramService
+	secret  string
 }
 
-func NewTelegeamHandler(client *telegram.Client, secret string) *TelegramHandler {
+func NewTelegeamHandler(service *service.TelegramService, secret string) *TelegramHandler {
 	return &TelegramHandler{
-		client: client,
-		secret: secret,
+		service: service,
+		secret:  secret,
 	}
 }
 
@@ -47,6 +48,15 @@ func (h *TelegramHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 			w,
 			"invalid request",
 			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err := h.service.HandleUpdate(r.Context(), update); err != nil {
+		http.Error(
+			w,
+			"internal server error",
+			http.StatusInternalServerError,
 		)
 		return
 	}

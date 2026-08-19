@@ -161,13 +161,176 @@ tabs and newlines, is preserved.`
 }
 
 func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Message) error {
-	return nil
+	if message.ReplyToMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please reply to the daily problem message.\n\n"+
+				"Example:\n\n"+
+				"/submit\n"+
+				"<your code>",
+		)
+	}
+
+	parts := strings.SplitN(message.Text, "\n", 2)
+
+	if len(parts) < 2 || parts[1] == "" {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ No code provided.\n\n"+
+				"Use:\n\n"+
+				"/submit\n"+
+				"<your code>",
+		)
+	}
+
+	code := parts[1]
+
+	userID := message.From.ID
+
+	problemMessage, err := s.problemMessageRepository.GetByMessageID(
+		ctx,
+		userID,
+		message.ReplyToMessage.MessageID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("getting problem message: %w", err)
+	}
+
+	if problemMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ I couldn't find the problem you replied to.\n\n"+
+				"Please reply directly to the daily problem message.",
+		)
+	}
+
+	existing, err := s.submissionRepository.Get(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("checking existing submission: %w", err)
+	}
+
+	if existing != nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"⚠️ You already submitted a solution for this problem.\n\n"+
+				"Use /edit to replace it.",
+		)
+	}
+
+	_, err = s.submissionRepository.Create(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+		code,
+	)
+
+	if err != nil {
+		return fmt.Errorf("creating submission: %w", err)
+	}
+
+	return s.sendMessage(
+		ctx,
+		message.Chat.ID,
+		"✅ Your solution has been saved!",
+	)
 }
 
 func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Message) error {
-	return nil
+	if message.ReplyToMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please reply to the daily problem message.",
+		)
+	}
+
+	parts := strings.SplitN(message.Text, "\n", 2)
+
+	if len(parts) < 2 || parts[1] == "" {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ No new code provided.\n\n"+
+				"Use:\n\n"+
+				"/edit\n"+
+				"<new code>",
+		)
+	}
+
+	code := parts[1]
+
+	userID := message.From.ID
+
+	problemMessage, err := s.problemMessageRepository.GetByMessageID(
+		ctx,
+		userID,
+		message.ReplyToMessage.MessageID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting problem message: %w",
+			err,
+		)
+	}
+
+	if problemMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ You don't have a submission for this problem yet.\n\n"+
+				"Use /submit first.",
+		)
+	}
+
+	_, err = s.submissionRepository.Update(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+		code,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"updating submission: %w",
+			err,
+		)
+	}
+
+	return s.sendMessage(
+		ctx,
+		message.Chat.ID,
+		"✏️ Your solution has been updated!",
+	)
 }
 
 func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Message) error {
 	return nil
+}
+
+func (s *TelegramService) sendMessage(ctx context.Context, chatID int64, text string) error {
+	_, err := s.telegramClient.SendMessage(ctx, chatID, text)
+
+	if err != nil {
+		return fmt.Errorf(
+			"sending telegram message: %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func (s *TelegramService) sendError(ctx context.Context, chatID int64, text string) error {
+	return s.sendMessage(ctx, chatID, text)
 }

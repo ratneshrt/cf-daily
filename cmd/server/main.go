@@ -69,7 +69,20 @@ func main() {
 	// -------- telegram
 	telegramClient := telegram.NewClient(cfg.TelegramBotToken)
 
-	telegramHandler := handler.NewTelegeamHandler(telegramClient, cfg.TelegramWebhookSecret)
+	telegramUserRepository := repository.NewTelegramUserRepository(db)
+
+	codeSubmissionRepository := repository.NewCodeSubmissionRepository(db)
+
+	telegramProblemMessageRepository := repository.NewTelegramProblemMessageRepository(db)
+
+	telegramService := service.NewTelegramService(
+		telegramUserRepository,
+		codeSubmissionRepository,
+		telegramProblemMessageRepository,
+		telegramClient,
+	)
+
+	telegramHandler := handler.NewTelegeamHandler(telegramService, cfg.TelegramWebhookSecret)
 
 	mux := http.NewServeMux()
 
