@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/ratneshrt/cf-daily/internal/repository"
@@ -25,34 +26,61 @@ func NewTelegramService(userRepository *repository.TelegramUserRepository, submi
 	}
 }
 
-func (s *TelegramService) HandleUpdate(ctx context.Context, update telegram.Update) error {
+func (s *TelegramService) HandleUpdate(
+	ctx context.Context,
+	update telegram.Update,
+) error {
 	if update.Message == nil {
+		slog.Info("telegram update has no message")
 		return nil
 	}
 
 	if update.Message.From == nil {
+		slog.Info("telegram message has no sender")
 		return nil
 	}
 
-	text := update.Message.Text
+	slog.Info(
+		"telegram update received",
+		"message_id",
+		update.Message.MessageID,
+		"user_id",
+		update.Message.From.ID,
+		"text",
+		update.Message.Text,
+		"has_reply",
+		update.Message.ReplyToMessage != nil,
+	)
+
+	text := strings.TrimSpace(update.Message.Text)
 
 	switch {
 	case strings.HasPrefix(text, "/start"):
+		slog.Info("routing to start")
 		return s.handleStart(ctx, update.Message)
 
 	case strings.HasPrefix(text, "/help"):
+		slog.Info("routing to help")
 		return s.handleHelp(ctx, update.Message)
 
+	case strings.HasPrefix(text, "/submit"):
+		slog.Info("routing to submit")
+		return s.handleSubmit(ctx, update.Message)
+
 	case strings.HasPrefix(text, "/edit"):
+		slog.Info("routing to edit")
 		return s.handleEdit(ctx, update.Message)
 
 	case strings.HasPrefix(text, "/delete"):
+		slog.Info("routing to delete")
 		return s.handleDelete(ctx, update.Message)
 
-	case strings.HasPrefix(text, "submit"):
-		return s.handleSubmit(ctx, update.Message)
-
 	default:
+		slog.Info(
+			"unknown telegram command",
+			"text",
+			update.Message.Text,
+		)
 		return nil
 	}
 }
@@ -161,6 +189,17 @@ tabs and newlines, is preserved.`
 }
 
 func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Message) error {
+	slog.Info(
+		"handleSubmit called",
+		"message_id",
+		message.MessageID,
+		"user_id",
+		message.From.ID,
+		"text",
+		message.Text,
+		"has_reply",
+		message.ReplyToMessage != nil,
+	)
 	if message.ReplyToMessage == nil {
 		return s.sendError(
 			ctx,
