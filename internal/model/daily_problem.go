@@ -10,4 +10,5 @@ type DailyProblem struct {
 	Name         string
 	Rating       int
 	URL          string
+	Tags         []string
 }

@@ -20,7 +20,7 @@ func NewClient(token string) *Client {
 	}
 }
 
-func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) error {
+func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) (*SentMessage, error) {
 	payload := struct {
 		ChatID int64  `json:"chat_id"`
 		Text   string `json:"text"`
@@ -31,7 +31,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshalling telegram message: %w", err)
+		return nil, fmt.Errorf("marshalling telegram message: %w", err)
 	}
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", c.token)
@@ -44,24 +44,40 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string) err
 	)
 
 	if err != nil {
-		return fmt.Errorf("creating telegram request: %w", err)
+		return nil, fmt.Errorf("creating telegram request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("sending telegram req: %w", err)
+		return nil, fmt.Errorf("sending telegram req: %w", err)
 	}
 
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"telegram returned status %d",
 			resp.StatusCode,
 		)
 	}
 
-	return nil
+	var result APIResponse[SentMessage]
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf(
+			"decoding telegram response: %w",
+			err,
+		)
+	}
+
+	if !result.OK {
+		return nil, fmt.Errorf(
+			"telegram API error: %s",
+			result.Description,
+		)
+	}
+
+	return &result.Result, nil
 }

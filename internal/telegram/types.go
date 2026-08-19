@@ -24,3 +24,14 @@ type User struct {
 	LastName  string `json:"last_name,omitempty"`
 	Username  string `json:"username,omitempty"`
 }
+
+type APIResponse[T any] struct {
+	OK          bool   `json:"ok"`
+	Result      T      `json:"result"`
+	Description string `json:"description,omitempty"`
+}
+
+type SentMessage struct {
+	MessageID int64 `json:"message_id"`
+	Chat      Chat  `json:"chat"`
+}

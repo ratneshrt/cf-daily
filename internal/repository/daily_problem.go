@@ -56,7 +56,7 @@ func (r *DailyProblemRepository) GetByDate(ctx context.Context, date time.Time) 
 }
 
 func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.Problem, date time.Time) (*model.DailyProblem, error) {
-	query := `INSERT INTO daily_problems (assigned_date, contest_id, problem_index,name,rating,url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,assigned_date, contest_id, problem_index,name,rating,url`
+	query := `INSERT INTO daily_problems (assigned_date, contest_id, problem_index,name,rating,url,tags) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,assigned_date, contest_id, problem_index,name,rating,url,tags`
 
 	var dailyproblem model.DailyProblem
 
@@ -69,6 +69,7 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 		problem.Name,
 		problem.Rating,
 		problem.URL(),
+		problem.Tags,
 	).Scan(
 		&dailyproblem.ID,
 		&dailyproblem.AssignedDate,
@@ -77,6 +78,7 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 		&dailyproblem.Name,
 		&dailyproblem.Rating,
 		&dailyproblem.URL,
+		&dailyproblem.Tags,
 	)
 
 	if err == nil {
