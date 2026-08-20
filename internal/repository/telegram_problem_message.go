@@ -19,7 +19,7 @@ func NewTelegramProblemMessageRepository(db *pgxpool.Pool) *TelegramProblemMessa
 }
 
 func (r *TelegramProblemMessageRepository) Create(ctx context.Context, telegramUserID int64, dailyProblemID int64, telegramMessageID int64) (*model.TelegramProblemMessage, error) {
-	query := `INSERT INTO telegram_problem_messages (telegram_user_id, daily_problem_id, telegram_message_id) VALUES ($1,$2,$3) RETURNING id, telegram_user_id, daily_problem_id,sent_at`
+	query := `INSERT INTO telegram_problem_messages (telegram_user_id, daily_problem_id, telegram_message_id) VALUES ($1,$2,$3) RETURNING id, telegram_user_id, daily_problem_id, telegram_message_id,sent_at`
 
 	var message model.TelegramProblemMessage
 
@@ -48,7 +48,7 @@ func (r *TelegramProblemMessageRepository) Create(ctx context.Context, telegramU
 }
 
 func (r *TelegramProblemMessageRepository) GetByMessageID(ctx context.Context, telegramUserID int64, telegramMessageID int64) (*model.TelegramProblemMessage, error) {
-	query := `SELECT id,telegram_user_id,daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND telegram_message_id = $2`
+	query := `SELECT id,telegram_user_id,daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND telegram_message_id = $2 LIMIT 1`
 
 	var message model.TelegramProblemMessage
 
@@ -80,7 +80,7 @@ func (r *TelegramProblemMessageRepository) GetByMessageID(ctx context.Context, t
 }
 
 func (r *TelegramProblemMessageRepository) GetByUserAndProblem(ctx context.Context, telegramUserID int64, dailyProblemID int64) (*model.TelegramProblemMessage, error) {
-	query := `SELECT id, telegram_user_id, daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND daily_problem_id = $2`
+	query := `SELECT id, telegram_user_id, daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND daily_problem_id = $2 LIMIT 1`
 
 	var message model.TelegramProblemMessage
 
