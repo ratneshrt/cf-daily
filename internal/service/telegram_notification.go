@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/ratneshrt/cf-daily/internal/model"
 	"github.com/ratneshrt/cf-daily/internal/repository"
@@ -14,41 +13,26 @@ import (
 
 type TelegramNotificationService struct {
 	userRepository           *repository.TelegramUserRepository
+	dailyProblemService      *DailyProblemService
 	dailyProblemRepository   *repository.DailyProblemRepository
 	problemMessageRepository *repository.TelegramProblemMessageRepository
 	telegramClient           *telegram.Client
 }
 
-func NewTelegramNotificationService(userRepository *repository.TelegramUserRepository, dailyProblemRepository *repository.DailyProblemRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client) *TelegramNotificationService {
+func NewTelegramNotificationService(userRepository *repository.TelegramUserRepository, dailyProblemService *DailyProblemService, dailyProblemRepository *repository.DailyProblemRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client) *TelegramNotificationService {
 	return &TelegramNotificationService{
 		userRepository:           userRepository,
+		dailyProblemService:      dailyProblemService,
 		dailyProblemRepository:   dailyProblemRepository,
 		problemMessageRepository: problemMessageRepository,
 		telegramClient:           telegramClient,
 	}
 }
 
-func (s *TelegramNotificationService) SendDailyProblem(ctx context.Context, date time.Time) error {
-	problem, err := s.dailyProblemRepository.GetByDate(
-		ctx,
-		date,
-	)
-
-	if err != nil {
-		return fmt.Errorf(
-			"getting daily problem: %w",
-			err,
-		)
-	}
-
-	if problem == nil {
-		return fmt.Errorf(
-			"no daily problem found %s",
-			date.Format("2006-01-02"),
-		)
-	}
+func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, problem *model.DailyProblem) error {
 
 	users, err := s.userRepository.GetActiveUsers(ctx)
+
 	if err != nil {
 		return fmt.Errorf(
 			"getting active telegram users: %w",
@@ -108,7 +92,7 @@ func (s *TelegramNotificationService) SendDailyProblem(ctx context.Context, date
 			continue
 		}
 
-		_, err = s.problemMessageRepository.Create(
+		savedMessage, err := s.problemMessageRepository.Create(
 			ctx,
 			user.TelegramUserID,
 			problem.ID,
@@ -171,4 +155,23 @@ func buildDailyProblemMessage(problem *model.DailyProblem) string {
 	builder.WriteString("/delete")
 
 	return builder.String()
+}
+
+func (s *TelegramNotificationService) SendTodayProblem(ctx context.Context) error {
+	problem, err := s.dailyProblemService.GetToday(ctx)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting today's problem: %w",
+			err,
+		)
+	}
+
+	if problem == nil {
+		return fmt.Errorf(
+			"today's problem is nil",
+		)
+	}
+
+	return s.sendProblemToUsers(ctx, problem)
 }
