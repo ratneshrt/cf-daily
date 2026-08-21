@@ -387,7 +387,81 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 }
 
 func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Message) error {
-	return nil
+	if message.ReplyToMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please reply to the daily problem message.\n\n"+
+				"Use:\n\n"+
+				"/delete",
+		)
+	}
+
+	userID := message.From.ID
+
+	replyMessageID := message.ReplyToMessage.MessageID
+
+	problemMessage, err := s.problemMessageRepository.GetByMessageID(
+		ctx,
+		userID,
+		replyMessageID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting problem message: %w",
+			err,
+		)
+	}
+
+	if problemMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ I couldn't find the problem you replied to.\n\n"+
+				"Please reply directly to the daily problem message.",
+		)
+	}
+
+	submission, err := s.submissionRepository.Get(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"checking existing submission: %w",
+			err,
+		)
+	}
+
+	if submission == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ You don't have a submitted solution for this problem.",
+		)
+	}
+
+	err = s.submissionRepository.Delete(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"deleting submission: %w",
+			err,
+		)
+	}
+
+	return s.sendMessage(
+		ctx,
+		message.Chat.ID,
+		"🗑️ Your solution has been deleted successfully.",
+	)
 }
 
 func (s *TelegramService) sendMessage(ctx context.Context, chatID int64, text string) error {
