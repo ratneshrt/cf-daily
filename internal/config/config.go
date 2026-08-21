@@ -16,6 +16,12 @@ type Config struct {
 	TelegramWebhookSecret  string
 	CronSecret             string
 	TelegramAllowedUserIDs []int64
+	GitHubAppID            int64
+	GitHubClientID         string
+	GitHubPrivateKey       string
+	GitHubCallbackURL      string
+	GitHubOwner            string
+	GitHubRepositoryName   string
 }
 
 func Load() (Config, error) {

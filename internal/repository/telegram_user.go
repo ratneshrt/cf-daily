@@ -168,3 +168,29 @@ func (r *TelegramUserRepository) GetActiveUsers(ctx context.Context) ([]model.Te
 
 	return users, nil
 }
+
+func (r *TelegramProblemMessageRepository) ConnectGithub(ctx context.Context, telegramUserID int64, githubUserID int64, githubUsername string, githubInstallationID int64) error {
+	query := `UPDATE telegram_users SET github_user_id = $1, github_username = $2, github_installation_id = $3, github_connected_at = NOW(), updated_at = NOW() WHERE telegram_user_id = $4`
+
+	tag, err := r.db.Exec(
+		ctx,
+		query,
+		githubUserID,
+		githubUsername,
+		githubInstallationID,
+		telegramUserID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("connecting github account: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf(
+			"telegram user %d not found",
+			telegramUserID,
+		)
+	}
+
+	return nil
+}

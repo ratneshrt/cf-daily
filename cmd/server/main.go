@@ -66,6 +66,15 @@ func main() {
 		cfg.MaxRating,
 	)
 
+	githubStateRepository := repository.NewGitHubStateRepository(db)
+	githubService := service.NewGitHubService(
+		cfg.GitHubAppID,
+		cfg.GitHubClientID,
+		cfg.GitHubPrivateKey,
+		cfg.GitHubCallbackURL,
+		cfg.GitHubRepositoryName,
+	)
+
 	// -------- telegram
 	telegramClient := telegram.NewClient(cfg.TelegramBotToken)
 
@@ -80,6 +89,8 @@ func main() {
 		codeSubmissionRepository,
 		telegramProblemMessageRepository,
 		telegramClient,
+		githubService,
+		githubStateRepository,
 	)
 
 	telegramNotificationService := service.NewTelegramNotificationService(
