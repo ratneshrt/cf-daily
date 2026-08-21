@@ -28,7 +28,7 @@ func (r *TelegramProblemMessageRepository) Create(ctx context.Context, telegramU
 		query,
 		telegramUserID,
 		dailyProblemID,
-		telegramUserID,
+		telegramMessageID,
 	).Scan(
 		&message.ID,
 		&message.TelegramUserID,
