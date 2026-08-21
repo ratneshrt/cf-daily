@@ -85,8 +85,6 @@ jobs:
             MAX_RATING=${{ vars.MAX_RATING }}
             TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
             TELEGRAM_WEBHOOK_SECRET=${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
-            EOF
-
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             TELEGRAM_ALLOWED_USER_IDS=${{ vars.TELEGRAM_ALLOWED_USER_IDS }}
             EOF
