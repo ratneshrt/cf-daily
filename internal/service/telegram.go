@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/ratneshrt/cf-daily/internal/repository"
 	"github.com/ratneshrt/cf-daily/internal/telegram"
@@ -15,14 +16,18 @@ type TelegramService struct {
 	submissionRepository     *repository.CodeSubmissionRepository
 	problemMessageRepository *repository.TelegramProblemMessageRepository
 	telegramClient           *telegram.Client
+	githubService            *GitHubService
+	githubStateRepository    *repository.GitHubStateRepository
 }
 
-func NewTelegramService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client) *TelegramService {
+func NewTelegramService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client, githubService *GitHubService, githubStateRepository *repository.GitHubStateRepository) *TelegramService {
 	return &TelegramService{
 		userRepository:           userRepository,
 		submissionRepository:     submissionRepository,
 		problemMessageRepository: problemMessageRepository,
 		telegramClient:           telegramClient,
+		githubService:            githubService,
+		githubStateRepository:    githubStateRepository,
 	}
 }
 
@@ -75,6 +80,9 @@ func (s *TelegramService) HandleUpdate(
 		slog.Info("routing to delete")
 		return s.handleDelete(ctx, update.Message)
 
+	case strings.HasPrefix(text, "/connect-github"):
+		return s.handleConnectGitHub(ctx, update.Message)
+
 	default:
 		slog.Info(
 			"unknown telegram command",
@@ -83,6 +91,39 @@ func (s *TelegramService) HandleUpdate(
 		)
 		return nil
 	}
+}
+
+func (s *TelegramService) handleConnectGitHub(ctx context.Context, message *telegram.Message) error {
+	userID := message.From.ID
+
+	state, err := GenerateGitHubState()
+
+	if err != nil {
+		return fmt.Errorf(
+			"creating github connection state: %w",
+			err,
+		)
+	}
+
+	expiresAt := time.Now().Add(10 * time.Minute)
+
+	err = s.githubStateRepository.Create(
+		ctx,
+		state,
+		userID,
+		expiresAt,
+	)
+
+	authURL := s.githubService.InstallationURL(state)
+
+	return s.sendMessage(
+		ctx,
+		message.Chat.ID,
+		"🔗 Connect your GitHub account\n\n"+
+			"Install Flux on your GitHub account and "+
+			"authorize it to manage your CF solutions.\n\n"+
+			authURL,
+	)
 }
 
 func (s *TelegramService) handleStart(ctx context.Context, message *telegram.Message) error {
