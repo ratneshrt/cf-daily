@@ -189,6 +189,18 @@ tabs and newlines, is preserved.`
 }
 
 func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Message) error {
+
+	if message.ReplyToMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please reply to the daily problem message.\n\n"+
+				"Example:\n\n"+
+				"/submit\n"+
+				"<your code>",
+		)
+	}
+
 	slog.Info(
 		"handleSubmit called",
 		"message_id",
@@ -200,16 +212,6 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		"has_reply",
 		message.ReplyToMessage != nil,
 	)
-	if message.ReplyToMessage == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"❌ Please reply to the daily problem message.\n\n"+
-				"Example:\n\n"+
-				"/submit\n"+
-				"<your code>",
-		)
-	}
 
 	parts := strings.SplitN(message.Text, "\n", 2)
 
@@ -228,10 +230,18 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 
 	userID := message.From.ID
 
+	replyMessageID := message.ReplyToMessage.MessageID
+
+	slog.Info(
+		"looking up telegram problem message",
+		"telegram_user_id", userID,
+		"reply_message_id", replyMessageID,
+	)
+
 	problemMessage, err := s.problemMessageRepository.GetByMessageID(
 		ctx,
 		userID,
-		message.ReplyToMessage.MessageID,
+		replyMessageID,
 	)
 
 	if err != nil {
@@ -309,11 +319,12 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 	code := parts[1]
 
 	userID := message.From.ID
+	replyMessageID := message.ReplyToMessage.MessageID
 
 	problemMessage, err := s.problemMessageRepository.GetByMessageID(
 		ctx,
 		userID,
-		message.ReplyToMessage.MessageID,
+		replyMessageID,
 	)
 
 	if err != nil {
@@ -324,6 +335,28 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 	}
 
 	if problemMessage == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ You don't have a submission for this problem yet.\n\n"+
+				"Use /submit first.",
+		)
+	}
+
+	existing, err := s.submissionRepository.Get(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"checking exisiting submission: %w",
+			err,
+		)
+	}
+
+	if existing == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
