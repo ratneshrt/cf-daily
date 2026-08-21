@@ -109,6 +109,7 @@ func main() {
 	mux.HandleFunc("GET /problem/today", dailyProblemHandler.GetToday)
 	mux.HandleFunc("POST /telegram/webhook", telegramHandler.Webhook)
 	mux.HandleFunc("POST /telegram/send-daily-problem", telegramNotificationHandler.SendDailyProblem)
+	mux.HandleFunc("POST /telegram/send-reminder", telegramNotificationHandler.SendReminder)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,

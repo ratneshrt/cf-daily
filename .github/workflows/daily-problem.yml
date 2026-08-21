@@ -6,10 +6,22 @@ on:
     - cron: "0 18 * * *"
   
   workflow_dispatch:
+    inputs:
+      jobs:
+        description: "What do you want to trigger?"
+        required: true
+        type: choice
+        options:
+          - daily
+          - reminder
 
 jobs:
+
   daily-problem: 
     name: Send Daily Problem
+    if: |
+      github.event.schedule == '30 8 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'daily')
+
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +33,15 @@ jobs:
           curl --fail-with-body \
             -X POST \ 
             -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.CF_DAILY_URL }}/cron/daily-problem"
+            "${{ secrets.CF_DAILY_URL }}/telegram/send-daily-problem"
+          
+          echo "Daily problem sent successfully"
   
   nightly-reminder:
     name: Send 11:30PM Reminder
+    if: |
+      github.event.schedule == '0 18 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'reminder')
+
     runs-on: ubuntu-latest
 
     steps:
@@ -33,7 +50,9 @@ jobs:
         run: |
           echo "Sending nightly reminder..."
 
-          curl --faily-with-body \
+          curl --fail-with-body \
             -X POST \
             -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.CF_DAILY_URL }}/cron/nightly-reminder"
+            "${{ secrets.CF_DAILY_URL }}/telegram/send-reminder"
+          
+          echo "Nightly reminder sent successfully."
