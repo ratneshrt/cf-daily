@@ -87,6 +87,10 @@ jobs:
             TELEGRAM_WEBHOOK_SECRET=${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
             EOF
 
+            CRON_SECRET=${{ secrets.CRON_SECRET }}
+            TELEGRAM_ALLOWED_USER_IDS=${{ vars.TELEGRAM_ALLOWED_USER_IDS }}
+            EOF
+
             chmod 600 ~/cf-daily/rating.env
 
             echo "Pulling image..."

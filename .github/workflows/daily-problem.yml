@@ -1,0 +1,39 @@
+name: CF Daily Scheduler
+
+on:
+  schedule:
+    - cron: "30 8 * * *"
+    - cron: "0 18 * * *"
+  
+  workflow_dispatch:
+
+jobs:
+  daily-problem: 
+    name: Send Daily Problem
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send today's problem
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 8 * * *'
+        run: |
+          echo "Sending today's codeforces problem..."
+
+          curl --fail-with-body \
+            -X POST \ 
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.CF_DAILY_URL }}/cron/daily-problem"
+  
+  nightly-reminder:
+    name: Send 11:30PM Reminder
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send nightly reminder
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 18 * * *'
+        run: |
+          echo "Sending nightly reminder..."
+
+          curl --faily-with-body \
+            -X POST \
+            -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.CF_DAILY_URL }}/cron/nightly-reminder"

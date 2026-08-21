@@ -14,18 +14,25 @@ import (
 type TelegramNotificationService struct {
 	userRepository           *repository.TelegramUserRepository
 	dailyProblemService      *DailyProblemService
-	dailyProblemRepository   *repository.DailyProblemRepository
 	problemMessageRepository *repository.TelegramProblemMessageRepository
 	telegramClient           *telegram.Client
+	allowedUserIDs           map[int64]bool
 }
 
-func NewTelegramNotificationService(userRepository *repository.TelegramUserRepository, dailyProblemService *DailyProblemService, dailyProblemRepository *repository.DailyProblemRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client) *TelegramNotificationService {
+func NewTelegramNotificationService(userRepository *repository.TelegramUserRepository, dailyProblemService *DailyProblemService, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client, allowedUserIDs []int64) *TelegramNotificationService {
+
+	allowed := make(map[int64]bool)
+
+	for _, id := range allowedUserIDs {
+		allowed[id] = true
+	}
+
 	return &TelegramNotificationService{
 		userRepository:           userRepository,
 		dailyProblemService:      dailyProblemService,
-		dailyProblemRepository:   dailyProblemRepository,
 		problemMessageRepository: problemMessageRepository,
 		telegramClient:           telegramClient,
+		allowedUserIDs:           allowed,
 	}
 }
 
@@ -43,6 +50,16 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 	message := buildDailyProblemMessage(problem)
 
 	for _, user := range users {
+
+		if !s.allowedUserIDs[user.TelegramUserID] {
+			slog.Debug(
+				"telegram user is not allowed",
+				"telegram_user_id",
+				user.TelegramUserID,
+			)
+			continue
+		}
+
 		existingMessage, err := s.problemMessageRepository.GetByUserAndProblem(
 			ctx,
 			user.TelegramUserID,
@@ -92,7 +109,7 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 			continue
 		}
 
-		savedMessage, err := s.problemMessageRepository.Create(
+		_, err = s.problemMessageRepository.Create(
 			ctx,
 			user.TelegramUserID,
 			problem.ID,

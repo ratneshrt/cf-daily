@@ -84,13 +84,23 @@ func main() {
 
 	telegramNotificationService := service.NewTelegramNotificationService(
 		telegramUserRepository,
-		dailyProblemRepository,
+		dailyProblemService,
 		telegramProblemMessageRepository,
 		telegramClient,
+		cfg.TelegramAllowedUserIDs,
+	)
+
+	telegramReminderService := service.NewTelegramReminderService(
+		telegramUserRepository,
+		codeSubmissionRepository,
+		dailyProblemService,
+		telegramClient,
+		cfg.TelegramAllowedUserIDs,
 	)
 
 	telegramHandler := handler.NewTelegeamHandler(telegramService, cfg.TelegramWebhookSecret)
-	telegramNotificationHandler := handler.NewTelegramNotificationHandler(telegramNotificationService)
+
+	telegramNotificationHandler := handler.NewTelegramNotificationHandler(telegramNotificationService, cfg.CronSecret, telegramReminderService)
 
 	mux := http.NewServeMux()
 

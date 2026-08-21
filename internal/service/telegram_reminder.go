@@ -14,14 +14,23 @@ type TelegramReminderService struct {
 	submissionRepository *repository.CodeSubmissionRepository
 	dailyProblemService  *DailyProblemService
 	telegramClient       *telegram.Client
+	allowedUserIDs       map[int64]bool
 }
 
-func NewTelegramReminderService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, dailyProblemService *DailyProblemService, telegramClient *telegram.Client) *TelegramReminderService {
+func NewTelegramReminderService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, dailyProblemService *DailyProblemService, telegramClient *telegram.Client, allowedUserIDs []int64) *TelegramReminderService {
+
+	allowed := make(map[int64]bool)
+
+	for _, id := range allowedUserIDs {
+		allowed[id] = true
+	}
+
 	return &TelegramReminderService{
 		userRepository:       userRepository,
 		submissionRepository: submissionRepository,
 		dailyProblemService:  dailyProblemService,
 		telegramClient:       telegramClient,
+		allowedUserIDs:       allowed,
 	}
 }
 
@@ -37,7 +46,6 @@ func (s *TelegramReminderService) SendNightlyReminder(ctx context.Context) error
 	if problem == nil {
 		return fmt.Errorf(
 			"today's problem not found",
-			err,
 		)
 	}
 
@@ -48,6 +56,11 @@ func (s *TelegramReminderService) SendNightlyReminder(ctx context.Context) error
 	}
 
 	for _, user := range users {
+
+		if !s.allowedUserIDs[user.TelegramUserID] {
+			continue
+		}
+
 		submission, err := s.submissionRepository.Get(ctx, user.TelegramUserID, problem.ID)
 
 		if err != nil {
