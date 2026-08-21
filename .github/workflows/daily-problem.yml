@@ -5,15 +5,15 @@ on:
     - cron: "30 8 * * *"
     - cron: "0 18 * * *"
   
-  workflow_dispatch:
-    inputs:
-      jobs:
-        description: "What do you want to trigger?"
-        required: true
-        type: choice
-        options:
-          - daily
-          - reminder
+  # workflow_dispatch:
+  #   inputs:
+  #     jobs:
+  #       description: "What do you want to trigger?"
+  #       required: true
+  #       type: choice
+  #       options:
+  #         - daily
+  #         - reminder
 
 jobs:
 
