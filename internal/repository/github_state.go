@@ -79,16 +79,25 @@ func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, e
 }
 
 func (r *GitHubStateRepository) Delete(ctx context.Context, state string) error {
-	_, err := r.db.Exec(
+
+	query := `DELETE FROM github_connection_states WHERE state = $1`
+
+	tag, err := r.db.Exec(
 		ctx,
-		`DELETE FROM github_connection_state WHERE state = $1`,
+		query,
 		state,
 	)
 
 	if err != nil {
 		return fmt.Errorf(
-			"delete github connection state: %w",
+			"deleting github connection state: %w",
 			err,
+		)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf(
+			"github connection state was already consumed or does not exist",
 		)
 	}
 
