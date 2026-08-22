@@ -19,6 +19,7 @@ type Config struct {
 	TelegramAllowedUserIDs []int64
 	GitHubAppID            int64
 	GitHubClientID         string
+	GitHubClientSecret     string
 	GitHubPrivateKey       string
 	GitHubCallbackURL      string
 	GitHubOwner            string

@@ -83,10 +83,12 @@ func (s *TelegramReminderService) SendNightlyReminder(ctx context.Context) error
 				"⏰ 11:30 PM Reminder\n\n"+
 					"🔥 You haven't solved today's problem yet!\n\n"+
 					"📌 %s\n"+
-					"⭐ Rating: %d\n\n"+
+					"⭐ Rating: %d\n"+
+					"URL: %s\n\n"+
 					"Give it a try before the day ends! 💪",
 				problem.Name,
 				problem.Rating,
+				problem.URL,
 			)
 		} else {
 			message = fmt.Sprintf(
