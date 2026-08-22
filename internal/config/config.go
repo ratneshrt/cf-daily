@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strconv"
@@ -25,6 +26,29 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+
+	privateKeyB64 := strings.TrimSpace(
+		os.Getenv("FLUX_PRIVATE_KEY_B64"),
+	)
+
+	if privateKeyB64 == "" {
+		return Config{}, fmt.Errorf(
+			"FLUX_PRIVATE_KEY_B64 is required",
+		)
+	}
+
+	keyBytes, err := base64.StdEncoding.DecodeString(
+		privateKeyB64,
+	)
+
+	if err != nil {
+		return Config{}, fmt.Errorf(
+			"decoding flux private key: %w",
+			err,
+		)
+	}
+
+	privateKey := string(keyBytes)
 
 	minRating, err := strconv.Atoi(os.Getenv("MIN_RATING"))
 	if err != nil {
@@ -53,6 +77,7 @@ func Load() (Config, error) {
 		TelegramWebhookSecret:  os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
 		CronSecret:             os.Getenv("CRON_SECRET"),
 		TelegramAllowedUserIDs: telegramAllowedUserIDs,
+		GitHubPrivateKey:       privateKey,
 	}, nil
 }
 
