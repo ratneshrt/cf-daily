@@ -4,16 +4,21 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ratneshrt/cf-daily/internal/repository"
 	"github.com/ratneshrt/cf-daily/internal/service"
 )
 
 type GitHubHandler struct {
-	githubService *service.GitHubService
+	githubService          *service.GitHubService
+	githubStateRepository  *repository.GitHubStateRepository
+	telegramUserRepository *repository.TelegramUserRepository
 }
 
-func NewGitHubHandler(githubservice *service.GitHubService) *GitHubHandler {
+func NewGitHubHandler(githubservice *service.GitHubService, githubStateRepository *repository.GitHubStateRepository, telegramUserRepository *repository.TelegramUserRepository) *GitHubHandler {
 	return &GitHubHandler{
-		githubService: githubservice,
+		githubService:          githubservice,
+		githubStateRepository:  githubStateRepository,
+		telegramUserRepository: telegramUserRepository,
 	}
 }
 

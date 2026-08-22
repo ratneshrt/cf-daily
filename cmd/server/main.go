@@ -113,6 +113,12 @@ func main() {
 
 	telegramNotificationHandler := handler.NewTelegramNotificationHandler(telegramNotificationService, cfg.CronSecret, telegramReminderService)
 
+	githubHandler := handler.NewGitHubHandler(
+		githubService,
+		githubStateRepository,
+		telegramUserRepository,
+	)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", healthHandler)
@@ -121,6 +127,7 @@ func main() {
 	mux.HandleFunc("POST /telegram/webhook", telegramHandler.Webhook)
 	mux.HandleFunc("POST /telegram/send-daily-problem", telegramNotificationHandler.SendDailyProblem)
 	mux.HandleFunc("POST /telegram/send-reminder", telegramNotificationHandler.SendReminder)
+	mux.HandleFunc("GET /github/callback", githubHandler.Callback)
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
