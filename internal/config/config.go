@@ -25,6 +25,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+
 	minRating, err := strconv.Atoi(os.Getenv("MIN_RATING"))
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid MIN_RATING: %w", err)

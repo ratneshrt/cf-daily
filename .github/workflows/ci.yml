@@ -87,11 +87,11 @@ jobs:
             TELEGRAM_WEBHOOK_SECRET=${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             TELEGRAM_ALLOWED_USER_IDS=${{ vars.TELEGRAM_ALLOWED_USER_IDS }}
-            FLUX_APP_ID: ${{ secrets.FLUX_APP_ID }}
-            FLUX_CLIENT_ID: ${{ secrets.FLUX_CLIENT_ID }}
-            FLUX_PRIVATE_KEY: ${{ secrets.FLUX_PRIVATE_KEY }}
-            FLUX_CALLBACK_URL: ${{ secrets.FLUX_CALLBACK_URL }}
-            FLUX_REPOSITORY: ${{ secrets.FLUX_REPOSITORY }}
+            FLUX_APP_ID=${{ secrets.FLUX_APP_ID }}
+            FLUX_CLIENT_ID=${{ secrets.FLUX_CLIENT_ID }}
+            FLUX_PRIVATE_KEY=${{ secrets.FLUX_PRIVATE_KEY }}
+            FLUX_CALLBACK_URL=${{ secrets.FLUX_CALLBACK_URL }}
+            FLUX_REPOSITORY=${{ secrets.FLUX_REPOSITORY }}
             EOF
 
             chmod 600 ~/cf-daily/rating.env
