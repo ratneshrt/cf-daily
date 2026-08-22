@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -47,6 +49,45 @@ func (r *GitHubStateRepository) Create(
 	if err != nil {
 		return fmt.Errorf(
 			"creating github connection state: %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, error) {
+	query := `SELECT telegram_user_id FROM github_connection_states WHERE state = $1 AND expires_at > NOW()`
+
+	var telegramUserID int64
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		state,
+	).Scan(&telegramUserID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, fmt.Errorf("invalid or expires github state")
+		}
+
+		return 0, fmt.Errorf("getting github connection state: %w", err)
+	}
+
+	return telegramUserID, nil
+}
+
+func (r *GitHubStateRepository) Delete(ctx context.Context, state string) error {
+	_, err := r.db.Exec(
+		ctx,
+		`DELETE FROM github_connection_state WHERE state = $1`,
+		state,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"delete github connection state: %w",
 			err,
 		)
 	}

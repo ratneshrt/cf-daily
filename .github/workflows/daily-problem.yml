@@ -17,7 +17,7 @@ on:
 
 jobs:
 
-  daily-problem: 
+  daily-problem:
     name: Send Daily Problem
     if: |
       github.event.schedule == '30 8 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'daily')
@@ -31,12 +31,12 @@ jobs:
           echo "Sending today's codeforces problem..."
 
           curl --fail-with-body \
-            -X POST \ 
+            -X POST \
             -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.CF_DAILY_URL }}/telegram/send-daily-problem"
-          
+
           echo "Daily problem sent successfully"
-  
+
   nightly-reminder:
     name: Send 11:30PM Reminder
     if: |
@@ -54,5 +54,5 @@ jobs:
             -X POST \
             -H "X-Cron-Secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.CF_DAILY_URL }}/telegram/send-reminder"
-          
+
           echo "Nightly reminder sent successfully."

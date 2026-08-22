@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -15,10 +17,22 @@ import (
 type GitHubService struct {
 	appID          int64
 	clientID       string
+	clientSecret   string
 	privateKey     *rsa.PrivateKey
 	callbackURL    string
 	httpClient     *http.Client
 	repositoryName string
+}
+
+type GitHubUser struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+}
+
+type GitHubOAuthTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
 }
 
 type githubInstallationResponse struct {
@@ -34,7 +48,7 @@ type installationTokenResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func NewGitHubService(appID int64, clientID string, privateKeyPEM string, callbackURL string, repositoryName string) *GitHubService {
+func NewGitHubService(appID int64, clientID string, clientSecret string, privateKeyPEM string, callbackURL string, repositoryName string) *GitHubService {
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKeyPEM))
 
 	if err != nil {
@@ -42,10 +56,11 @@ func NewGitHubService(appID int64, clientID string, privateKeyPEM string, callba
 	}
 
 	return &GitHubService{
-		appID:       appID,
-		clientID:    clientID,
-		privateKey:  key,
-		callbackURL: callbackURL,
+		appID:        appID,
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		privateKey:   key,
+		callbackURL:  callbackURL,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -63,7 +78,7 @@ func (s *GitHubService) generateAppJWT() (string, error) {
 	}
 
 	token := jwt.NewWithClaims(
-		jwt.SigningMethodES256,
+		jwt.SigningMethodRS256,
 		claims,
 	)
 
@@ -202,4 +217,187 @@ func (s *GitHubService) InstallationURL(state string) string {
 	)
 
 	return "https://github.com/apps/8pieces/installations/new?" + values.Encode()
+}
+
+func (s *GitHubService) ExchangeCode(ctx context.Context, code string) (string, error) {
+	payload := map[string]string{
+		"client_id":     s.clientID,
+		"client_secret": s.clientSecret,
+		"code":          code,
+		"redirect_uri":  s.callbackURL,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshalling github oauth request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"https://github.com/login/oauth/access_token",
+		bytes.NewReader(body),
+	)
+
+	if err != nil {
+		return "", fmt.Errorf(
+			"creating github ouath request: %w",
+			err,
+		)
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf(
+			"exchanging github code: %w",
+			err,
+		)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf(
+			"github oauth returned status %d",
+			resp.StatusCode,
+		)
+	}
+
+	var result GitHubOAuthTokenResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf(
+			"decoding github oauth response: %w",
+			err,
+		)
+	}
+
+	if result.AccessToken == "" {
+		return "", fmt.Errorf(
+			"github oauth returned empty access token",
+		)
+	}
+
+	return result.AccessToken, nil
+}
+
+func (s *GitHubService) GetAuthenticatedUser(ctx context.Context, accessToken string) (*GitHubUser, error) {
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		"https://api.github.com/user",
+		nil,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf(
+			"creating github user request: %w",
+			err,
+		)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"getting gtihub user: %w",
+			err,
+		)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf(
+			"github user returned status %d",
+			resp.StatusCode,
+		)
+	}
+
+	var user GitHubUser
+
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf(
+			"decoding github user: %w",
+			err,
+		)
+	}
+
+	return &user, nil
+}
+
+func (s *GitHubService) CreateRepository(ctx context.Context, installationID int64) error {
+	token, err := s.GetInstallationToken(ctx, installationID)
+
+	if err != nil {
+		return err
+	}
+
+	payload := map[string]any{
+		"name":        s.repositoryName,
+		"description": "Codeforces solutions managed by 8pieces",
+		"private":     false,
+		"auto_init":   true,
+	}
+
+	body, err := json.Marshal(payload)
+
+	if err != nil {
+		return fmt.Errorf(
+			"marshalling repository name: %w",
+			err,
+		)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"https://api.github.com/user/repos",
+		bytes.NewReader(body),
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"creating repository req: %w",
+			err,
+		)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	resp, err := s.httpClient.Do(req)
+
+	if err != nil {
+		return fmt.Errorf(
+			"creating github repository: %w",
+			err,
+		)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return nil
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	return fmt.Errorf(
+		"github repository creation failed: status=%d body=%s",
+		resp.StatusCode,
+		string(bodyBytes),
+	)
 }
