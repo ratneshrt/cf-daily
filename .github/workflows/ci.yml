@@ -90,6 +90,7 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             TELEGRAM_ALLOWED_USER_IDS=${{ vars.TELEGRAM_ALLOWED_USER_IDS }}
             FLUX_APP_ID=${{ secrets.FLUX_APP_ID }}
+            FLUX_CLIENT_SECRET=${{ secrets.FLUX_CLIENT_SECRET }}
             FLUX_CLIENT_ID=${{ secrets.FLUX_CLIENT_ID }}
             FLUX_PRIVATE_KEY_B64=${FLUX_PRIVATE_KEY_B64}
             FLUX_CALLBACK_URL=${{ secrets.FLUX_CALLBACK_URL }}

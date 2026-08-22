@@ -70,6 +70,7 @@ func main() {
 	githubService := service.NewGitHubService(
 		cfg.GitHubAppID,
 		cfg.GitHubClientID,
+		cfg.GitHubClientSecret,
 		cfg.GitHubPrivateKey,
 		cfg.GitHubCallbackURL,
 		cfg.GitHubRepositoryName,
