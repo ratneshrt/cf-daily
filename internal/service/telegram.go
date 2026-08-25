@@ -80,7 +80,7 @@ func (s *TelegramService) HandleUpdate(
 		slog.Info("routing to delete")
 		return s.handleDelete(ctx, update.Message)
 
-	case strings.HasPrefix(text, "/connect-github"):
+	case strings.HasPrefix(text, "/connect"):
 		return s.handleConnectGitHub(ctx, update.Message)
 
 	default:
