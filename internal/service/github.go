@@ -219,35 +219,39 @@ func (s *GitHubService) InstallationURL(state string) string {
 	return "https://github.com/apps/8pieces/installations/new?" + values.Encode()
 }
 
-func (s *GitHubService) ExchangeCode(ctx context.Context, code string) (string, error) {
-	payload := map[string]string{
-		"client_id":     s.clientID,
-		"client_secret": s.clientSecret,
-		"code":          code,
-		"redirect_uri":  s.callbackURL,
-	}
+func (s *GitHubService) ExchangeCode(
+	ctx context.Context,
+	code string,
+) (string, error) {
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshalling github oauth request: %w", err)
-	}
+	params := url.Values{}
+
+	params.Set("client_id", s.clientID)
+	params.Set("client_secret", s.clientSecret)
+	params.Set("code", code)
+	params.Set("redirect_uri", s.callbackURL)
+
+	endpoint := "https://github.com/login/oauth/access_token?" +
+		params.Encode()
 
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		"https://github.com/login/oauth/access_token",
-		bytes.NewReader(body),
+		endpoint,
+		nil,
 	)
 
 	if err != nil {
 		return "", fmt.Errorf(
-			"creating github ouath request: %w",
+			"creating github oauth request: %w",
 			err,
 		)
 	}
 
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(
+		"Accept",
+		"application/json",
+	)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -259,10 +263,15 @@ func (s *GitHubService) ExchangeCode(ctx context.Context, code string) (string, 
 
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf(
+			"reading github oauth response: %w",
+			err,
+		)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-
-		bodyBytes, _ := io.ReadAll(resp.Body)
-
 		return "", fmt.Errorf(
 			"github oauth returned status %d: %s",
 			resp.StatusCode,
@@ -272,7 +281,7 @@ func (s *GitHubService) ExchangeCode(ctx context.Context, code string) (string, 
 
 	var result GitHubOAuthTokenResponse
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return "", fmt.Errorf(
 			"decoding github oauth response: %w",
 			err,
