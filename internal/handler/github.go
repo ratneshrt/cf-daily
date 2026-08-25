@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/ratneshrt/cf-daily/internal/repository"
@@ -33,9 +34,14 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	telegramUserID, err := h.githubStateRepository.Get(ctx, state)
+	telegramUserID, err := h.githubStateRepository.Consume(ctx, state)
 
 	if err != nil {
+		log.Printf(
+			"github state consume failed: %v",
+			err,
+		)
+
 		http.Error(
 			w,
 			"invalid or expired connection",
@@ -44,18 +50,13 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.githubStateRepository.Delete(ctx, state); err != nil {
-		http.Error(
-			w,
-			"failed to consume connection state",
-			http.StatusInternalServerError,
-		)
-		return
-	}
+	log.Printf("github state consumed: telegram_user_id=%d", telegramUserID)
 
 	accessToken, err := h.githubService.ExchangeCode(ctx, code)
 
 	if err != nil {
+		log.Printf("github oauth exchange failed: %v", err)
+
 		http.Error(
 			w,
 			"failed to authorize GitHub",

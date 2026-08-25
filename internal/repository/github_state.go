@@ -29,14 +29,7 @@ func (r *GitHubStateRepository) Create(
 	expiresAt time.Time,
 ) error {
 
-	query := `
-		INSERT INTO github_connection_states (
-			state,
-			telegram_user_id,
-			expires_at
-		)
-		VALUES ($1, $2, $3)
-	`
+	query := `INSERT INTO github_connection_states (state,telegram_user_id,expires_at) VALUES ($1, $2, $3)`
 
 	_, err := r.db.Exec(
 		ctx,
@@ -56,8 +49,8 @@ func (r *GitHubStateRepository) Create(
 	return nil
 }
 
-func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, error) {
-	query := `SELECT telegram_user_id FROM github_connection_states WHERE state = $1 AND expires_at > NOW()`
+func (r *GitHubStateRepository) Consume(ctx context.Context, state string) (int64, error) {
+	query := `DELETE FROM github_connection_states WHERE state = $1 AND expires_at > NOW() RETURNING telegram_user_id`
 
 	var telegramUserID int64
 
@@ -69,37 +62,13 @@ func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, e
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, fmt.Errorf("invalid or expires github state")
+			return 0, fmt.Errorf("github connection state not found, expired or already consumed")
 		}
-
-		return 0, fmt.Errorf("getting github connection state: %w", err)
-	}
-
-	return telegramUserID, nil
-}
-
-func (r *GitHubStateRepository) Delete(ctx context.Context, state string) error {
-
-	query := `DELETE FROM github_connection_states WHERE state = $1`
-
-	tag, err := r.db.Exec(
-		ctx,
-		query,
-		state,
-	)
-
-	if err != nil {
-		return fmt.Errorf(
-			"deleting github connection state: %w",
+		return 0, fmt.Errorf(
+			"consuming github connection state: %w",
 			err,
 		)
 	}
 
-	if tag.RowsAffected() == 0 {
-		return fmt.Errorf(
-			"github connection state was already consumed or does not exist",
-		)
-	}
-
-	return nil
+	return telegramUserID, nil
 }
