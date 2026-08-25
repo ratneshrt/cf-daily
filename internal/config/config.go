@@ -135,7 +135,7 @@ func Load() (Config, error) {
 		CronSecret:             os.Getenv("CRON_SECRET"),
 		TelegramAllowedUserIDs: telegramAllowedUserIDs,
 		GitHubAppID:            githubAppID,
-		GitHubClientID:         gitHubClientSecret,
+		GitHubClientID:         githubClientID,
 		GitHubClientSecret:     gitHubClientSecret,
 		GitHubOwner:            os.Getenv("FLUX_OWNER"),
 		GitHubCallbackURL:      githubCallbackURL,
