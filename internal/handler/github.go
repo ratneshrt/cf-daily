@@ -28,6 +28,14 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
+	installationIDParam := r.URL.Query().Get("installation_id")
+	setupAction := r.URL.Query().Get("setup_action")
+
+	log.Printf(
+		"github callback: installation_id=%s setup_action=%s",
+		installationIDParam,
+		setupAction,
+	)
 
 	if code == "" || state == "" {
 		http.Error(w, "missing code or state", http.StatusBadRequest)
@@ -105,7 +113,12 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.githubService.CreateRepository(ctx, installationID); err != nil {
+	if err := h.githubService.CreateRepository(ctx, accessToken); err != nil {
+		log.Printf(
+			"github repository creation failed: %v",
+			err,
+		)
+
 		http.Error(
 			w,
 			"Github connected, but failed to create flux-cf repository",
