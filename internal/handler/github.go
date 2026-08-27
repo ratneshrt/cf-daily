@@ -75,12 +75,12 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	consumedTelegramUserID, err := h.githubStateRepository.Consume(ctx, code)
+	consumedTelegramUserID, err := h.githubStateRepository.Consume(ctx, state)
 
 	if err != nil {
 		log.Printf("github state consume failed: state=%s error=%v", state, err)
 
-		http.Error(w, "failed to finalize gtihub connection", http.StatusInternalServerError)
+		http.Error(w, "failed to finalize github connection", http.StatusInternalServerError)
 
 		return
 	}
@@ -93,7 +93,7 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("github state consumed: telegram_user_id=%d", telegramUserID)
+	log.Printf("github state validated: state=%s telegram_user_id=%d", state, telegramUserID)
 
 	githubUser, err := h.githubService.GetAuthenticatedUser(
 		ctx,
@@ -149,7 +149,7 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("github repository created successfully: gtihub_user=%s installation_id=%d", githubUser.Login, installationID)
+	log.Printf("github repository created successfully: github_user=%s installation_id=%d", githubUser.Login, installationID)
 
 	fmt.Fprintf(
 		w,

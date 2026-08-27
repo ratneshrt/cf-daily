@@ -319,7 +319,7 @@ func (s *GitHubService) GetAuthenticatedUser(ctx context.Context, accessToken st
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"getting gtihub user: %w",
+			"getting github user: %w",
 			err,
 		)
 	}
