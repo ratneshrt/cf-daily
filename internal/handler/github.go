@@ -38,15 +38,17 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if code == "" || state == "" {
+		log.Printf("github callback missing code or state")
+
 		http.Error(w, "missing code or state", http.StatusBadRequest)
 		return
 	}
 
-	telegramUserID, err := h.githubStateRepository.Consume(ctx, state)
+	telegramUserID, err := h.githubStateRepository.Get(ctx, state)
 
 	if err != nil {
 		log.Printf(
-			"github state consume failed: %v",
+			"github state validation failed: %v",
 			err,
 		)
 
@@ -72,6 +74,26 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+
+	consumedTelegramUserID, err := h.githubStateRepository.Consume(ctx, code)
+
+	if err != nil {
+		log.Printf("github state consume failed: state=%s error=%v", state, err)
+
+		http.Error(w, "failed to finalize gtihub connection", http.StatusInternalServerError)
+
+		return
+	}
+
+	if consumedTelegramUserID != telegramUserID {
+		log.Printf("github state user mismatch: validated=%d consumed=%d", telegramUserID, consumedTelegramUserID)
+
+		http.Error(w, "invalid GitHub connection state", http.StatusBadRequest)
+
+		return
+	}
+
+	log.Printf("github state consumed: telegram_user_id=%d", telegramUserID)
 
 	githubUser, err := h.githubService.GetAuthenticatedUser(
 		ctx,
@@ -126,6 +148,8 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+
+	log.Printf("github repository created successfully: gtihub_user=%s installation_id=%d", githubUser.Login, installationID)
 
 	fmt.Fprintf(
 		w,

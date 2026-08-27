@@ -107,12 +107,25 @@ func (s *TelegramService) handleConnectGitHub(ctx context.Context, message *tele
 
 	expiresAt := time.Now().Add(10 * time.Minute)
 
+	slog.Info("github connect state generated", "telegram_user_id", userID, "state", state, "expires_at", expiresAt)
+
 	err = s.githubStateRepository.Create(
 		ctx,
 		state,
 		userID,
 		expiresAt,
 	)
+
+	if err != nil {
+		slog.Error("github connect state create failed", "telegram_user_id", userID, "state", state, "error", err)
+
+		return fmt.Errorf(
+			"saving github connection state: %w",
+			err,
+		)
+	}
+
+	slog.Info("github connect state saved", "telegram_user_id", userID, "state", state)
 
 	authURL := s.githubService.InstallationURL(state)
 
