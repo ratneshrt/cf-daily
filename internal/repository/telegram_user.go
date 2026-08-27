@@ -21,7 +21,7 @@ func NewTelegramUserRepository(db *pgxpool.Pool) *TelegramUserRepository {
 }
 
 func (r *TelegramUserRepository) GetByTelegramUserID(ctx context.Context, telegramUserID int64) (*model.TelegramUser, error) {
-	query := `SELECT id, telegram_user_id, chat_id, username,first_name, active, created_at,updated_at FROM telegram_users WHERE telegram_user_id = $1`
+	query := `SELECT id, telegram_user_id, chat_id, username,first_name, active,github_user_id,github_username,github_installation_id,github_connected_at, created_at,updated_at FROM telegram_users WHERE telegram_user_id = $1`
 
 	var user model.TelegramUser
 
@@ -36,6 +36,10 @@ func (r *TelegramUserRepository) GetByTelegramUserID(ctx context.Context, telegr
 		&user.Username,
 		&user.FirstName,
 		&user.Active,
+		&user.GithubUserID,
+		&user.GithubUsername,
+		&user.GithubInstallationID,
+		&user.GithubConnectedAt,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)

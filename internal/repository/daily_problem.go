@@ -102,3 +102,37 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 
 	return nil, fmt.Errorf("creating daily problem: %w", err)
 }
+
+func (r *DailyProblemRepository) GetByID(ctx context.Context, id int64) (*model.DailyProblem, error) {
+	query := `SELECT id, assigned_date,contest_id,problem_index,name,rating,url,tags FROM daily_problems WHERE id = $1`
+
+	var problem model.DailyProblem
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		id,
+	).Scan(
+		&problem.ID,
+		&problem.AssignedDate,
+		&problem.ContestID,
+		&problem.ProblemIndex,
+		&problem.Name,
+		&problem.Rating,
+		&problem.URL,
+		&problem.Tags,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"getting daily problem by id: %w",
+			err,
+		)
+	}
+
+	return &problem, nil
+}

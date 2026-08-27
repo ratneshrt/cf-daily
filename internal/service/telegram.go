@@ -15,16 +15,18 @@ type TelegramService struct {
 	userRepository           *repository.TelegramUserRepository
 	submissionRepository     *repository.CodeSubmissionRepository
 	problemMessageRepository *repository.TelegramProblemMessageRepository
+	dailyProblemRepository   *repository.DailyProblemRepository
 	telegramClient           *telegram.Client
 	githubService            *GitHubService
 	githubStateRepository    *repository.GitHubStateRepository
 }
 
-func NewTelegramService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, telegramClient *telegram.Client, githubService *GitHubService, githubStateRepository *repository.GitHubStateRepository) *TelegramService {
+func NewTelegramService(userRepository *repository.TelegramUserRepository, submissionRepository *repository.CodeSubmissionRepository, problemMessageRepository *repository.TelegramProblemMessageRepository, dailyProblemRepository *repository.DailyProblemRepository, telegramClient *telegram.Client, githubService *GitHubService, githubStateRepository *repository.GitHubStateRepository) *TelegramService {
 	return &TelegramService{
 		userRepository:           userRepository,
 		submissionRepository:     submissionRepository,
 		problemMessageRepository: problemMessageRepository,
+		dailyProblemRepository:   dailyProblemRepository,
 		telegramClient:           telegramClient,
 		githubService:            githubService,
 		githubStateRepository:    githubStateRepository,
@@ -327,6 +329,85 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 			message.Chat.ID,
 			"⚠️ You already submitted a solution for this problem.\n\n"+
 				"Use /edit to replace it.",
+		)
+	}
+
+	problem, err := s.dailyProblemRepository.GetByID(
+		ctx,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting daily problem: %w",
+			err,
+		)
+	}
+
+	if problem == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Daily problem not found.",
+		)
+	}
+
+	user, err := s.userRepository.GetByTelegramUserID(
+		ctx,
+		userID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting telegram user: %w",
+			err,
+		)
+	}
+
+	if user == nil ||
+		user.GithubUsername == nil ||
+		user.GithubInstallationID == nil {
+
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please connect GitHub first using /connect.",
+		)
+	}
+
+	path := buildSolutionPath(
+		problem.ContestID,
+		problem.ProblemIndex,
+		problem.Name,
+	)
+
+	err = s.githubService.CreateOrUpdateFile(
+		ctx,
+		*user.GithubInstallationID,
+		*user.GithubUsername,
+		path,
+		code,
+		fmt.Sprintf(
+			"Add solution for %d%s - %s",
+			problem.ContestID,
+			problem.ProblemIndex,
+			problem.Name,
+		),
+	)
+
+	if err != nil {
+		slog.Error(
+			"failed to push solution to github",
+			"telegram_user_id", userID,
+			"daily_problem_id", problem.ID,
+			"path", path,
+			"error", err,
+		)
+
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Failed to push your solution to GitHub.",
 		)
 	}
 

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -22,6 +24,13 @@ type GitHubService struct {
 	callbackURL    string
 	httpClient     *http.Client
 	repositoryName string
+}
+
+type GitHubContentResponse struct {
+	SHA     string `json:"sha"`
+	Content struct {
+		SHA string `json:"sha"`
+	} `json:"content"`
 }
 
 type GitHubUser struct {
@@ -533,4 +542,143 @@ func (s *GitHubService) GetExistingRepository(ctx context.Context, access_token 
 	}
 
 	return &repo, nil
+}
+
+func buildSolutionPath(contestID int, problemIndex string, problemName string) string {
+	name := sanitizerProblemName(problemName)
+
+	return fmt.Sprintf(
+		"%d/%d%s-%s/solution.cpp",
+		contestID,
+		contestID,
+		problemIndex,
+		name,
+	)
+}
+
+func sanitizerProblemName(name string) string {
+	name = strings.TrimSpace(name)
+
+	var builder strings.Builder
+
+	lastWasDash := false
+
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			builder.WriteRune(r)
+			lastWasDash = false
+
+		case r >= 'A' && r <= 'Z':
+			builder.WriteRune(r)
+			lastWasDash = false
+
+		case r >= '0' && r <= '9':
+			builder.WriteRune(r)
+			lastWasDash = false
+
+		default:
+			if !lastWasDash && builder.Len() > 0 {
+				builder.WriteRune('-')
+				lastWasDash = true
+			}
+		}
+	}
+
+	return strings.Trim(builder.String(), "-")
+}
+
+func (s *GitHubService) CreateOrUpdateFile(ctx context.Context, installationID int64, owner string, path string, content string, commitMessage string) error {
+	token, err := s.GetInstallationToken(ctx, installationID)
+
+	if err != nil {
+		return fmt.Errorf("getting github installation token: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", url.PathEscape(owner), url.PathEscape(s.repositoryName), path)
+
+	var existingSHA string
+
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+
+	if err != nil {
+		return fmt.Errorf("creating github file lookup request: %w", err)
+	}
+
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq.Header.Set("Accept", "application/vnd.github+json")
+	getReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	getResp, err := s.httpClient.Do(getReq)
+
+	if err != nil {
+		return fmt.Errorf("checking github file: %w", err)
+	}
+
+	if getResp.StatusCode == http.StatusOK {
+
+		var existing GitHubContentResponse
+
+		err := json.NewDecoder(getReq.Body).Decode(&existing)
+
+		getResp.Body.Close()
+
+		if err != nil {
+			return fmt.Errorf("decoding existing github file: %w", err)
+		}
+
+		existingSHA = existing.SHA
+	} else if getResp.StatusCode == http.StatusNotFound {
+		getResp.Body.Close()
+	} else {
+		bodyBytes, _ := io.ReadAll(getResp.Body)
+
+		getResp.Body.Close()
+
+		return fmt.Errorf("github file lookup failed: status=%d body=%s", getResp.StatusCode, string(bodyBytes))
+	}
+
+	encodedContent := base64.StdEncoding.EncodeToString([]byte(content))
+
+	payload := map[string]any{
+		"message": commitMessage,
+		"content": encodedContent,
+	}
+
+	if existingSHA != "" {
+		payload["sha"] = existingSHA
+	}
+
+	body, err := json.Marshal(payload)
+
+	if err != nil {
+		return fmt.Errorf("marshalling github file payload: %w", err)
+	}
+
+	putReq, err := http.NewRequestWithContext(ctx, http.MethodPut, endpoint, bytes.NewReader(body))
+
+	if err != nil {
+		return fmt.Errorf("creating github file req: %w", err)
+	}
+
+	putReq.Header.Set("Authorization", "Bearer "+token)
+	putReq.Header.Set("Accept", "application/vnd.github+json")
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	putResp, err := s.httpClient.Do(putReq)
+
+	if err != nil {
+		return fmt.Errorf("writing github file: %w", err)
+	}
+
+	defer putResp.Body.Close()
+
+	if putResp.StatusCode != http.StatusCreated && putResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(putResp.Body)
+
+		return fmt.Errorf("github file write failed: status=%d body=%s", putResp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
 }
