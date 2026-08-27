@@ -74,15 +74,16 @@ func (r *GitHubStateRepository) Consume(ctx context.Context, state string) (int6
 }
 
 func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, error) {
-	query := `SELECT telegram_user_id FROM github_connection_states WHERE state = $1 AND expires_at > NOW()`
+	query := `SELECT telegram_user_id,expires_at FROM github_connection_states WHERE state = $1 AND expires_at > NOW()`
 
 	var telegramUserID int64
+	var expiresAt time.Time
 
 	err := r.db.QueryRow(
 		ctx,
 		query,
 		state,
-	).Scan(&telegramUserID)
+	).Scan(&telegramUserID, &expiresAt)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -90,6 +91,10 @@ func (r *GitHubStateRepository) Get(ctx context.Context, state string) (int64, e
 		}
 
 		return 0, fmt.Errorf("getting github connection state: %w", err)
+	}
+
+	if time.Now().After(expiresAt) {
+		return 0, fmt.Errorf("github state expired at %s", expiresAt.Format(time.RFC3339))
 	}
 
 	return telegramUserID, nil
