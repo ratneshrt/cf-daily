@@ -29,6 +29,15 @@ type GitHubUser struct {
 	Login string `json:"login"`
 }
 
+type GitHubRepository struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	FullName string `json:"full_name"`
+	HTMLURL  string `json:"html_url"`
+	CloneURL string `json:"clone_url"`
+	Private  bool   `json:"private"`
+}
+
 type GitHubOAuthTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
@@ -345,12 +354,7 @@ func (s *GitHubService) GetAuthenticatedUser(ctx context.Context, accessToken st
 	return &user, nil
 }
 
-func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string) error {
-	// token, err := s.GetInstallationToken(ctx, installationID)
-
-	// if err != nil {
-	// 	return err
-	// }
+func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string) (*GitHubRepository, error) {
 
 	payload := map[string]any{
 		"name":        s.repositoryName,
@@ -362,7 +366,7 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 	body, err := json.Marshal(payload)
 
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"marshalling repository name: %w",
 			err,
 		)
@@ -376,7 +380,7 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 	)
 
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"creating repository req: %w",
 			err,
 		)
@@ -390,7 +394,7 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 	resp, err := s.httpClient.Do(req)
 
 	if err != nil {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"creating github repository: %w",
 			err,
 		)
@@ -399,13 +403,38 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
-		return nil
+
+		var repo GitHubRepository
+
+		if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
+			return nil, fmt.Errorf("decodind created github repo: %w", err)
+		}
+
+		return &repo, nil
 	}
 
 	if resp.StatusCode == http.StatusUnprocessableEntity {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 
-		return fmt.Errorf(
+		var githubError struct {
+			Message string `json:"message"`
+			Errors  []struct {
+				Resource string `json:"resource"`
+				Code     string `json:"code"`
+				Field    string `json:"field"`
+				Message  string `json:"message"`
+			} `json:"errors"`
+		}
+
+		if err := json.Unmarshal(bodyBytes, &githubError); err == nil {
+			for _, githubErr := range githubError.Errors {
+				if githubErr.Field == "name" && githubErr.Message == "name already exists on this account" {
+					return s.GetExistingRepository(ctx, accessToken)
+				}
+			}
+		}
+
+		return nil, fmt.Errorf(
 			"github repository already exists or validation failed: %s",
 			string(bodyBytes),
 		)
@@ -413,7 +442,7 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
-	return fmt.Errorf(
+	return nil, fmt.Errorf(
 		"github repository creation failed: status=%d body=%s",
 		resp.StatusCode,
 		string(bodyBytes),
@@ -462,4 +491,46 @@ func (s *GitHubService) GetRepository(ctx context.Context, installationID int64,
 
 	return fmt.Errorf("github repository lookup failed: status=%d body=%s", resp.StatusCode, string(bodyBytes))
 
+}
+
+func (s *GitHubService) GetExistingRepository(ctx context.Context, access_token string) (*GitHubRepository, error) {
+	user, err := s.GetAuthenticatedUser(ctx, access_token)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting authenticated github user: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s", url.PathEscape(user.Login), url.PathEscape(s.repositoryName))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("creating existing repository request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+access_token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	resp, err := s.httpClient.Do(req)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting existing gtihub repo: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodybytes, _ := io.ReadAll(resp.Body)
+
+		return nil, fmt.Errorf("existing gtihub repo lookup failed: status=%d body=%s", resp.StatusCode, string(bodybytes))
+	}
+
+	var repo GitHubRepository
+
+	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
+		return nil, fmt.Errorf("decoding existing github repo: %w", err)
+	}
+
+	return &repo, nil
 }

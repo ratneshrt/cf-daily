@@ -135,7 +135,9 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.githubService.CreateRepository(ctx, accessToken); err != nil {
+	repo, err := h.githubService.CreateRepository(ctx, accessToken)
+
+	if err != nil {
 		log.Printf(
 			"github repository creation failed: %v",
 			err,
@@ -151,6 +153,13 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("github repository created successfully: github_user=%s installation_id=%d", githubUser.Login, installationID)
 
+	http.Redirect(
+		w,
+		r,
+		repo.HTMLURL,
+		http.StatusFound,
+	)
+
 	fmt.Fprintf(
 		w,
 		"✅ GitHub connected successfully!\n\n"+
@@ -160,4 +169,6 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		githubUser.Login,
 		installationID,
 	)
+
+	return
 }
