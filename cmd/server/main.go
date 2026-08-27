@@ -89,6 +89,7 @@ func main() {
 		telegramUserRepository,
 		codeSubmissionRepository,
 		telegramProblemMessageRepository,
+		dailyProblemRepository,
 		telegramClient,
 		githubService,
 		githubStateRepository,
