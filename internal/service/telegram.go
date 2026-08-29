@@ -218,15 +218,14 @@ func (s *TelegramService) handleHelp(ctx context.Context, message *telegram.Mess
 Reply to a daily problem:
 
 /submit
-<your code>
+<your code> -> to edit your code
 
- /edit
-<new code>
+/edit
+<new code> -> to edit your code
 
- /delete
+/delete -> to delete your code
 
-Your code formatting, including spaces,
-tabs and newlines, is preserved.`
+`
 
 	_, err := s.telegramClient.SendMessage(
 		ctx,
@@ -250,7 +249,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Please reply to the daily problem message.\n\n"+
+			"Please reply to the daily problem message.\n\n"+
 				"Example:\n\n"+
 				"/submit\n"+
 				"<your code>",
@@ -275,7 +274,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ No code provided.\n\n"+
+			"No code provided.\n\n"+
 				"Use:\n\n"+
 				"/submit\n"+
 				"<your code>",
@@ -308,7 +307,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ I couldn't find the problem you replied to.\n\n"+
+			"I couldn't find the problem you replied to.\n\n"+
 				"Please reply directly to the daily problem message.",
 		)
 	}
@@ -348,7 +347,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Daily problem not found.",
+			"Daily problem not found.",
 		)
 	}
 
@@ -371,7 +370,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Please connect GitHub first using /connect.",
+			"Please connect GitHub first using /connect.",
 		)
 	}
 
@@ -407,7 +406,7 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Failed to push your solution to GitHub.",
+			"Failed to push your solution to GitHub.",
 		)
 	}
 
@@ -434,7 +433,7 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Please reply to the daily problem message.",
+			"Please reply to the daily problem message.",
 		)
 	}
 
@@ -444,7 +443,7 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ No new code provided.\n\n"+
+			"No new code provided.\n\n"+
 				"Use:\n\n"+
 				"/edit\n"+
 				"<new code>",
@@ -473,7 +472,7 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ You don't have a submission for this problem yet.\n\n"+
+			"You don't have a submission for this problem yet.\n\n"+
 				"Use /submit first.",
 		)
 	}
@@ -495,7 +494,7 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ You don't have a submission for this problem yet.\n\n"+
+			"You don't have a submission for this problem yet.\n\n"+
 				"Use /submit first.",
 		)
 	}
@@ -566,7 +565,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Please reply to the daily problem message.\n\n"+
+			"Please reply to the daily problem message.\n\n"+
 				"Use:\n\n"+
 				"/delete",
 		)
@@ -593,7 +592,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ I couldn't find the problem you replied to.\n\n"+
+			"I couldn't find the problem you replied to.\n\n"+
 				"Please reply directly to the daily problem message.",
 		)
 	}
@@ -615,7 +614,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ You don't have a submitted solution for this problem.",
+			"You don't have a submitted solution for this problem.",
 		)
 	}
 
@@ -635,7 +634,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Daily problem not found.",
+			"Daily problem not found.",
 		)
 	}
 
@@ -658,7 +657,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Please connect GitHub first using /connect.",
+			"Please connect GitHub first using /connect.",
 		)
 	}
 
@@ -693,7 +692,7 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"❌ Failed to delete your solution from GitHub.",
+			"Failed to delete your solution from GitHub.",
 		)
 	}
 

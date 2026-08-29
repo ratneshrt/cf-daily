@@ -100,7 +100,7 @@ func Load() (Config, error) {
 
 	if err != nil {
 		return Config{}, fmt.Errorf(
-			"decoding flux private key: %w",
+			"decoding 8pieces private key: %w",
 			err,
 		)
 	}

@@ -145,7 +145,7 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 
 		http.Error(
 			w,
-			"Github connected, but failed to create flux-cf repository",
+			"Github connected, but failed to create the-codessy repository",
 			http.StatusInternalServerError,
 		)
 		return

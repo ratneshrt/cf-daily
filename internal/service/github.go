@@ -28,9 +28,7 @@ type GitHubService struct {
 
 type GitHubContentResponse struct {
 	SHA     string `json:"sha"`
-	Content struct {
-		SHA string `json:"sha"`
-	} `json:"content"`
+	Content string `json:"content"`
 }
 
 type GitHubUser struct {
@@ -709,6 +707,12 @@ func (s *GitHubService) DeleteFile(ctx context.Context, installationID int64, ow
 	}
 
 	if getResp.StatusCode == http.StatusNotFound {
+		getResp.Body.Close()
+
+		return fmt.Errorf("github file does not exist: %s", path)
+	}
+
+	if getResp.StatusCode != http.StatusNotFound {
 		bodyBytes, _ := io.ReadAll(getResp.Body)
 		getResp.Body.Close()
 
@@ -723,6 +727,10 @@ func (s *GitHubService) DeleteFile(ctx context.Context, installationID int64, ow
 
 	if err != nil {
 		return fmt.Errorf("decoding github file before delete: %w", err)
+	}
+
+	if existing.SHA == "" {
+		return fmt.Errorf("github file returned empty SHA: %s", path)
 	}
 
 	payload := map[string]string{
