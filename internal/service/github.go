@@ -712,7 +712,7 @@ func (s *GitHubService) DeleteFile(ctx context.Context, installationID int64, ow
 		return fmt.Errorf("github file does not exist: %s", path)
 	}
 
-	if getResp.StatusCode != http.StatusNotFound {
+	if getResp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(getResp.Body)
 		getResp.Body.Close()
 
