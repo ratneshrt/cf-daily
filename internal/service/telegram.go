@@ -500,6 +500,46 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		)
 	}
 
+	problem, err := s.dailyProblemRepository.GetByID(ctx, problemMessage.DailyProblemID)
+
+	if err != nil {
+		return fmt.Errorf("getting daily problem: %w", err)
+	}
+
+	if problem == nil {
+		return s.sendError(ctx, message.Chat.ID, "Daily problem not found")
+	}
+
+	user, err := s.userRepository.GetByTelegramUserID(ctx, userID)
+
+	if err != nil {
+		return fmt.Errorf("getting telegram user: %w", err)
+	}
+
+	if user == nil || user.GithubUsername == nil || user.GithubInstallationID == nil {
+		return s.sendError(ctx, message.Chat.ID, "Please connect Github first using /connect")
+	}
+
+	path := buildSolutionPath(problem.ContestID, problem.ProblemIndex, problem.Name)
+
+	err = s.githubService.CreateOrUpdateFile(ctx, *user.GithubInstallationID, *user.GithubUsername, path, code, fmt.Sprintf("update solution for %d%s - %s", problem.ContestID, problem.ProblemIndex, problem.Name))
+
+	if err != nil {
+		slog.Error(
+			"failed to update solution on github",
+			"telegram_user_id", userID,
+			"daily_problem_id", problem.ID,
+			"path", path,
+			"error", err,
+		)
+
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"Failed to update your solution on GitHub.",
+		)
+	}
+
 	_, err = s.submissionRepository.Update(
 		ctx,
 		userID,
@@ -576,6 +616,84 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 			ctx,
 			message.Chat.ID,
 			"❌ You don't have a submitted solution for this problem.",
+		)
+	}
+
+	problem, err := s.dailyProblemRepository.GetByID(
+		ctx,
+		problemMessage.DailyProblemID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting daily problem: %w",
+			err,
+		)
+	}
+
+	if problem == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Daily problem not found.",
+		)
+	}
+
+	user, err := s.userRepository.GetByTelegramUserID(
+		ctx,
+		userID,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"getting telegram user: %w",
+			err,
+		)
+	}
+
+	if user == nil ||
+		user.GithubUsername == nil ||
+		user.GithubInstallationID == nil {
+
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Please connect GitHub first using /connect.",
+		)
+	}
+
+	path := buildSolutionPath(
+		problem.ContestID,
+		problem.ProblemIndex,
+		problem.Name,
+	)
+
+	err = s.githubService.DeleteFile(
+		ctx,
+		*user.GithubInstallationID,
+		*user.GithubUsername,
+		path,
+		fmt.Sprintf(
+			"Delete solution for %d%s - %s",
+			problem.ContestID,
+			problem.ProblemIndex,
+			problem.Name,
+		),
+	)
+
+	if err != nil {
+		slog.Error(
+			"failed to delete solution from github",
+			"telegram_user_id", userID,
+			"daily_problem_id", problem.ID,
+			"path", path,
+			"error", err,
+		)
+
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"❌ Failed to delete your solution from GitHub.",
 		)
 	}
 

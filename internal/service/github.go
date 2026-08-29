@@ -682,3 +682,84 @@ func (s *GitHubService) CreateOrUpdateFile(ctx context.Context, installationID i
 
 	return nil
 }
+
+func (s *GitHubService) DeleteFile(ctx context.Context, installationID int64, owner string, path string, commitMessage string) error {
+	token, err := s.GetInstallationToken(ctx, installationID)
+
+	if err != nil {
+		return fmt.Errorf("getting gh installation token: %w", err)
+	}
+
+	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s", url.PathEscape(owner), url.PathEscape(s.repositoryName), path)
+
+	getReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+
+	if err != nil {
+		return fmt.Errorf("creating gh delete lookup request: %w", err)
+	}
+
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq.Header.Set("Accept", "application/vnd.github+json")
+	getReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	getResp, err := s.httpClient.Do(getReq)
+
+	if err != nil {
+		return fmt.Errorf("checking gh file before delete: %w", err)
+	}
+
+	if getResp.StatusCode == http.StatusNotFound {
+		bodyBytes, _ := io.ReadAll(getResp.Body)
+		getResp.Body.Close()
+
+		return fmt.Errorf("github file lookup before delete failed: status=%d body=%s", getResp.StatusCode, string(bodyBytes))
+	}
+
+	var existing GitHubContentResponse
+
+	err = json.NewDecoder(getResp.Body).Decode(&existing)
+
+	getResp.Body.Close()
+
+	if err != nil {
+		return fmt.Errorf("decoding github file before delete: %w", err)
+	}
+
+	payload := map[string]string{
+		"message": commitMessage,
+		"sha":     existing.SHA,
+	}
+
+	body, err := json.Marshal(payload)
+
+	if err != nil {
+		return fmt.Errorf("marshalling github delete payload: %w", err)
+	}
+
+	deleteReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, bytes.NewReader(body))
+
+	if err != nil {
+		return fmt.Errorf("creating github delete request: %w", err)
+	}
+
+	deleteReq.Header.Set("Authorization", "Bearer "+token)
+	deleteReq.Header.Set("Accept", "application/vnd.github+json")
+	deleteReq.Header.Set("Content-Type", "application/json")
+	deleteReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+
+	deleteResp, err := s.httpClient.Do(deleteReq)
+
+	if err != nil {
+		return fmt.Errorf("deleting github file: %w", err)
+	}
+
+	defer deleteResp.Body.Close()
+
+	if deleteResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(deleteResp.Body)
+
+		return fmt.Errorf("github file deletion failed: status=%d body=%s", deleteResp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
+}
