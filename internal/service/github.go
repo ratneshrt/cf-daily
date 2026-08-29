@@ -619,7 +619,7 @@ func (s *GitHubService) CreateOrUpdateFile(ctx context.Context, installationID i
 
 		var existing GitHubContentResponse
 
-		err := json.NewDecoder(getReq.Body).Decode(&existing)
+		err := json.NewDecoder(getResp.Body).Decode(&existing)
 
 		getResp.Body.Close()
 
