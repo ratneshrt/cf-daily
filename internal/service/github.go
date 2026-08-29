@@ -177,7 +177,7 @@ func (s *GitHubService) GetInstallationToken(ctx context.Context, installationID
 		return "", err
 	}
 
-	endpoint := fmt.Sprintf("https://api/github.com/app/installations/%d/access_tokens", installationID)
+	endpoint := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
