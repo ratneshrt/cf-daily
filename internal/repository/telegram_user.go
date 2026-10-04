@@ -124,6 +124,26 @@ func (r *TelegramUserRepository) Activate(ctx context.Context, telegramUserID in
 	return &user, nil
 }
 
+func (r *TelegramUserRepository) Deactivate(ctx context.Context, telegramUserID int64) error {
+	query := `UPDATE telegram_users SET active = FALSE, updated_at = NOW() WHERE telegram_user_id = $1`
+
+	tag, err := r.db.Exec(
+		ctx,
+		query,
+		telegramUserID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("deactivating telegram user: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("telegram user %d not found", telegramUserID)
+	}
+
+	return nil
+}
+
 func (r *TelegramUserRepository) GetActiveUsers(ctx context.Context) ([]model.TelegramUser, error) {
 	query := `SELECT id,telegram_user_id,chat_id,username,first_name,active,created_at,updated_at FROM telegram_users WHERE active = TRUE ORDER BY id`
 

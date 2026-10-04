@@ -26,6 +26,7 @@ func (h *ProblemHandler) GetProblem(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		h.minRating,
 		h.maxRating,
+		nil,
 	)
 
 	if err != nil {

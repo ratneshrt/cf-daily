@@ -1,8 +1,7 @@
 package handler
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/ratneshrt/cf-daily/internal/repository"
@@ -31,26 +30,25 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	installationIDParam := r.URL.Query().Get("installation_id")
 	setupAction := r.URL.Query().Get("setup_action")
 
-	log.Printf(
-		"github callback: installation_id=%s setup_action=%s",
-		installationIDParam,
-		setupAction,
+	slog.Info(
+		"github callback received",
+		"installation_id", installationIDParam,
+		"setup_action", setupAction,
 	)
 
 	if code == "" || state == "" {
-		log.Printf("github callback missing code or state")
+		slog.Warn("github callback missing code or state")
 
 		http.Error(w, "missing code or state", http.StatusBadRequest)
 		return
 	}
 
-	telegramUserID, err := h.githubStateRepository.Get(ctx, state)
+	// Consumed up front: validating first and consuming later left the state
+	// replayable whenever a later step failed.
+	telegramUserID, err := h.githubStateRepository.Consume(ctx, state)
 
 	if err != nil {
-		log.Printf(
-			"github state validation failed: %v",
-			err,
-		)
+		slog.Warn("github state validation failed", "error", err)
 
 		http.Error(
 			w,
@@ -60,12 +58,12 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("github state consumed: telegram_user_id=%d", telegramUserID)
+	slog.Info("github state consumed", "telegram_user_id", telegramUserID)
 
 	accessToken, err := h.githubService.ExchangeCode(ctx, code)
 
 	if err != nil {
-		log.Printf("github oauth exchange failed: %v", err)
+		slog.Error("github oauth exchange failed", "error", err)
 
 		http.Error(
 			w,
@@ -75,32 +73,14 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	consumedTelegramUserID, err := h.githubStateRepository.Consume(ctx, state)
-
-	if err != nil {
-		log.Printf("github state consume failed: state=%s error=%v", state, err)
-
-		http.Error(w, "failed to finalize github connection", http.StatusInternalServerError)
-
-		return
-	}
-
-	if consumedTelegramUserID != telegramUserID {
-		log.Printf("github state user mismatch: validated=%d consumed=%d", telegramUserID, consumedTelegramUserID)
-
-		http.Error(w, "invalid GitHub connection state", http.StatusBadRequest)
-
-		return
-	}
-
-	log.Printf("github state validated: state=%s telegram_user_id=%d", state, telegramUserID)
-
 	githubUser, err := h.githubService.GetAuthenticatedUser(
 		ctx,
 		accessToken,
 	)
 
 	if err != nil {
+		slog.Error("github user lookup failed", "error", err)
+
 		http.Error(
 			w,
 			"failed to get github user",
@@ -109,24 +89,39 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	installationID, err := h.githubService.GetUserInstallation(ctx, githubUser.Login)
+	// installationOwner is the account the app is installed on, which owns the
+	// repository. For a personal install it equals the user's login; for an
+	// organisation install it does not.
+	installationID, installationOwner, err := h.githubService.GetUserInstallation(ctx, githubUser.Login)
 
 	if err != nil {
+		slog.Error(
+			"github installation lookup failed",
+			"github_user", githubUser.Login,
+			"error", err,
+		)
+
 		http.Error(
 			w,
-			"8pieces installation not found",
+			"app installation not found",
 			http.StatusBadRequest,
 		)
 		return
+	}
+
+	if installationOwner == "" {
+		installationOwner = githubUser.Login
 	}
 
 	if err := h.telegramUserRepository.ConnectGithub(
 		ctx,
 		telegramUserID,
 		githubUser.ID,
-		githubUser.Login,
+		installationOwner,
 		installationID,
 	); err != nil {
+		slog.Error("saving github connection failed", "error", err)
+
 		http.Error(
 			w,
 			"failed to save github connection",
@@ -138,20 +133,26 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 	repo, err := h.githubService.CreateRepository(ctx, accessToken)
 
 	if err != nil {
-		log.Printf(
-			"github repository creation failed: %v",
-			err,
+		slog.Error(
+			"github repository creation failed",
+			"error", err,
 		)
 
 		http.Error(
 			w,
-			"Github connected, but failed to create the-codessy repository",
+			"GitHub connected, but the solutions repository could not be created",
 			http.StatusInternalServerError,
 		)
 		return
 	}
 
-	log.Printf("github repository created successfully: github_user=%s installation_id=%d", githubUser.Login, installationID)
+	slog.Info(
+		"github connected",
+		"github_user", githubUser.Login,
+		"owner", installationOwner,
+		"installation_id", installationID,
+		"repository", repo.FullName,
+	)
 
 	http.Redirect(
 		w,
@@ -159,16 +160,4 @@ func (h *GitHubHandler) Callback(w http.ResponseWriter, r *http.Request) {
 		repo.HTMLURL,
 		http.StatusFound,
 	)
-
-	fmt.Fprintf(
-		w,
-		"✅ GitHub connected successfully!\n\n"+
-			"GitHub: @%s\n"+
-			"Installation ID: %d\n\n"+
-			"You can close this page.",
-		githubUser.Login,
-		installationID,
-	)
-
-	return
 }

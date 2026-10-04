@@ -52,8 +52,8 @@ func (r *CodeSubmissionRepository) Get(ctx context.Context, telegramUserID int64
 	return &submission, nil
 }
 
-func (r *CodeSubmissionRepository) Create(ctx context.Context, telegramUserID int64, dailyProblemID int64, code string) (*model.CodeSubmission, error) {
-	query := `INSERT INTO code_submissions (telegram_user_id, daily_problem_id, code) VALUES ($1,$2,$3) RETURNING id, telegram_user_id,daily_problem_id,code,language,created_at,updated_at`
+func (r *CodeSubmissionRepository) Create(ctx context.Context, telegramUserID int64, dailyProblemID int64, code string, language string) (*model.CodeSubmission, error) {
+	query := `INSERT INTO code_submissions (telegram_user_id, daily_problem_id, code, language) VALUES ($1,$2,$3,$4) RETURNING id, telegram_user_id,daily_problem_id,code,language,created_at,updated_at`
 
 	var submission model.CodeSubmission
 
@@ -63,6 +63,7 @@ func (r *CodeSubmissionRepository) Create(ctx context.Context, telegramUserID in
 		telegramUserID,
 		dailyProblemID,
 		code,
+		language,
 	).Scan(
 		&submission.ID,
 		&submission.TelegramUserID,
@@ -83,8 +84,8 @@ func (r *CodeSubmissionRepository) Create(ctx context.Context, telegramUserID in
 	return &submission, nil
 }
 
-func (r *CodeSubmissionRepository) Update(ctx context.Context, telegramUserID int64, dailyProblemID int64, code string) (*model.CodeSubmission, error) {
-	query := `UPDATE code_submissions SET code = $3, updated_at = NOW() WHERE telegram_user_id = $1 AND daily_problem_id = $2 RETURNING id,telegram_user_id,daily_problem_id,code,language,created_at,updated_at`
+func (r *CodeSubmissionRepository) Update(ctx context.Context, telegramUserID int64, dailyProblemID int64, code string, language string) (*model.CodeSubmission, error) {
+	query := `UPDATE code_submissions SET code = $3, language = $4, updated_at = NOW() WHERE telegram_user_id = $1 AND daily_problem_id = $2 RETURNING id,telegram_user_id,daily_problem_id,code,language,created_at,updated_at`
 
 	var submission model.CodeSubmission
 
@@ -94,6 +95,7 @@ func (r *CodeSubmissionRepository) Update(ctx context.Context, telegramUserID in
 		telegramUserID,
 		dailyProblemID,
 		code,
+		language,
 	).Scan(
 		&submission.ID,
 		&submission.TelegramUserID,

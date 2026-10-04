@@ -30,7 +30,7 @@ func (h *DailyProblemHandler) GetToday(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if problem == nil {
-		http.Error(w, "today's problme not found", http.StatusNotFound)
+		http.Error(w, "no problem has been assigned for today yet", http.StatusNotFound)
 		return
 	}
 

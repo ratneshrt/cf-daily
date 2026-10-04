@@ -25,10 +25,15 @@ type User struct {
 	Username  string `json:"username,omitempty"`
 }
 
+type ResponseParameters struct {
+	RetryAfter int `json:"retry_after,omitempty"`
+}
+
 type APIResponse[T any] struct {
-	OK          bool   `json:"ok"`
-	Result      T      `json:"result"`
-	Description string `json:"description,omitempty"`
+	OK          bool               `json:"ok"`
+	Result      T                  `json:"result"`
+	Description string             `json:"description,omitempty"`
+	Parameters  ResponseParameters `json:"parameters,omitempty"`
 }
 
 type SentMessage struct {

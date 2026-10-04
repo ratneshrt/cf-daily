@@ -49,6 +49,9 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 
 	message := buildDailyProblemMessage(problem)
 
+	sent := 0
+	skipped := 0
+
 	for _, user := range users {
 
 		if !s.allowedUserIDs[user.TelegramUserID] {
@@ -57,6 +60,7 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 				"telegram_user_id",
 				user.TelegramUserID,
 			)
+			skipped++
 			continue
 		}
 
@@ -89,6 +93,7 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 				"telegram_message_id",
 				existingMessage.TelegramMessageID,
 			)
+			skipped++
 			continue
 		}
 
@@ -126,7 +131,21 @@ func (s *TelegramNotificationService) sendProblemToUsers(ctx context.Context, pr
 			)
 			continue
 		}
+
+		sent++
 	}
+
+	slog.Info(
+		"daily problem send finished",
+		"daily_problem_id",
+		problem.ID,
+		"active_users",
+		len(users),
+		"sent",
+		sent,
+		"skipped",
+		skipped,
+	)
 
 	return nil
 
@@ -175,7 +194,7 @@ func buildDailyProblemMessage(problem *model.DailyProblem) string {
 }
 
 func (s *TelegramNotificationService) SendTodayProblem(ctx context.Context) error {
-	problem, err := s.dailyProblemService.GetToday(ctx)
+	problem, err := s.dailyProblemService.EnsureToday(ctx)
 
 	if err != nil {
 		return fmt.Errorf(

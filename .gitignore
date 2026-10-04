@@ -1,9 +1,44 @@
+# secrets / environment
 .env
 .env.*
 !.env.example
+rating.env
 
+# build output
 bin/
 tmp/
+cf-daily
+cf-daily.exe
+*.exe
+*.test
+coverage.out
 
+# logs
 *.log
-rating.env
+
+# local notes and working files (not part of the project)
+BUGS.md
+notes/
+scratch/
+*.tmp
+*.bak
+
+# claude code / ai tooling
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.cursor/
+.aider*
+.mcp.json
+
+# editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# os
+.DS_Store
+Thumbs.db
+desktop.ini

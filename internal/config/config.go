@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 type Config struct {
 	Port                   string
+	LogLevel               slog.Level
 	DatabaseURL            string
 	MinRating              int
 	MaxRating              int
@@ -18,22 +20,19 @@ type Config struct {
 	CronSecret             string
 	TelegramAllowedUserIDs []int64
 	GitHubAppID            int64
+	GitHubAppSlug          string
 	GitHubClientID         string
 	GitHubClientSecret     string
 	GitHubPrivateKey       string
 	GitHubCallbackURL      string
-	GitHubOwner            string
 	GitHubRepositoryName   string
 }
 
 func Load() (Config, error) {
 
-	githubAppIDString := strings.TrimSpace(
-		os.Getenv("FLUX_APP_ID"),
-	)
-
-	if githubAppIDString == "" {
-		return Config{}, fmt.Errorf("FLUX_APP_ID is required")
+	githubAppIDString, err := requireEnv("FLUX_APP_ID")
+	if err != nil {
+		return Config{}, err
 	}
 
 	githubAppID, err := strconv.ParseInt(
@@ -46,52 +45,29 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid FLUX_APP_ID: %w", err)
 	}
 
-	githubClientID := strings.TrimSpace(
-		os.Getenv("FLUX_CLIENT_ID"),
-	)
-
-	if githubClientID == "" {
-		return Config{}, fmt.Errorf("FLUX_CLIENT_ID is required")
+	githubClientID, err := requireEnv("FLUX_CLIENT_ID")
+	if err != nil {
+		return Config{}, err
 	}
 
-	gitHubClientSecret := strings.TrimSpace(
-		os.Getenv("FLUX_CLIENT_SECRET"),
-	)
-
-	if gitHubClientSecret == "" {
-		return Config{}, fmt.Errorf(
-			"FLUX_CLIENT_SECRET is required",
-		)
+	gitHubClientSecret, err := requireEnv("FLUX_CLIENT_SECRET")
+	if err != nil {
+		return Config{}, err
 	}
 
-	githubCallbackURL := strings.TrimSpace(
-		os.Getenv("FLUX_CALLBACK_URL"),
-	)
-
-	if githubCallbackURL == "" {
-		return Config{}, fmt.Errorf(
-			"FLUX_CALLBACK_URL is required",
-		)
+	githubCallbackURL, err := requireEnv("FLUX_CALLBACK_URL")
+	if err != nil {
+		return Config{}, err
 	}
 
-	githubRepositoryName := strings.TrimSpace(
-		os.Getenv("FLUX_REPOSITORY"),
-	)
-
-	if githubRepositoryName == "" {
-		return Config{}, fmt.Errorf(
-			"FLUX_REPOSITORY is required",
-		)
+	githubRepositoryName, err := requireEnv("FLUX_REPOSITORY")
+	if err != nil {
+		return Config{}, err
 	}
 
-	privateKeyB64 := strings.TrimSpace(
-		os.Getenv("FLUX_PRIVATE_KEY_B64"),
-	)
-
-	if privateKeyB64 == "" {
-		return Config{}, fmt.Errorf(
-			"FLUX_PRIVATE_KEY_B64 is required",
-		)
+	privateKeyB64, err := requireEnv("FLUX_PRIVATE_KEY_B64")
+	if err != nil {
+		return Config{}, err
 	}
 
 	keyBytes, err := base64.StdEncoding.DecodeString(
@@ -100,12 +76,35 @@ func Load() (Config, error) {
 
 	if err != nil {
 		return Config{}, fmt.Errorf(
-			"decoding 8pieces private key: %w",
+			"decoding FLUX_PRIVATE_KEY_B64: %w",
 			err,
 		)
 	}
 
 	privateKey := string(keyBytes)
+
+	// These guard the webhook, the cron endpoints and the database. An empty
+	// value would make the header comparisons succeed for a request that sends
+	// no header at all, so they are required rather than optional.
+	databaseURL, err := requireEnv("DATABASE_URL")
+	if err != nil {
+		return Config{}, err
+	}
+
+	telegramBotToken, err := requireEnv("TELEGRAM_BOT_TOKEN")
+	if err != nil {
+		return Config{}, err
+	}
+
+	telegramWebhookSecret, err := requireEnv("TELEGRAM_WEBHOOK_SECRET")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cronSecret, err := requireEnv("CRON_SECRET")
+	if err != nil {
+		return Config{}, err
+	}
 
 	minRating, err := strconv.Atoi(os.Getenv("MIN_RATING"))
 	if err != nil {
@@ -117,6 +116,14 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid MAX_RATING: %w", err)
 	}
 
+	if minRating > maxRating {
+		return Config{}, fmt.Errorf(
+			"MIN_RATING (%d) is greater than MAX_RATING (%d)",
+			minRating,
+			maxRating,
+		)
+	}
+
 	telegramAllowedUserIDs, err := parseTelegramAllowedUserIDs(
 		os.Getenv("TELEGRAM_ALLOWED_USER_IDS"),
 	)
@@ -125,33 +132,65 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	logLevel, err := parseLogLevel(os.Getenv("LOG_LEVEL"))
+
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Port:                   getEnv("PORT", "8080"),
-		DatabaseURL:            os.Getenv("DATABASE_URL"),
+		LogLevel:               logLevel,
+		DatabaseURL:            databaseURL,
 		MinRating:              minRating,
 		MaxRating:              maxRating,
-		TelegramBotToken:       os.Getenv("TELEGRAM_BOT_TOKEN"),
-		TelegramWebhookSecret:  os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
-		CronSecret:             os.Getenv("CRON_SECRET"),
+		TelegramBotToken:       telegramBotToken,
+		TelegramWebhookSecret:  telegramWebhookSecret,
+		CronSecret:             cronSecret,
 		TelegramAllowedUserIDs: telegramAllowedUserIDs,
 		GitHubAppID:            githubAppID,
+		GitHubAppSlug:          getEnv("FLUX_APP_SLUG", "8pieces"),
 		GitHubClientID:         githubClientID,
 		GitHubClientSecret:     gitHubClientSecret,
-		GitHubOwner:            os.Getenv("FLUX_OWNER"),
 		GitHubCallbackURL:      githubCallbackURL,
 		GitHubRepositoryName:   githubRepositoryName,
 		GitHubPrivateKey:       privateKey,
 	}, nil
 }
 
+func requireEnv(key string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+
+	if value == "" {
+		return "", fmt.Errorf("%s is required", key)
+	}
+
+	return value, nil
+}
+
 func getEnv(key, fallback string) string {
-	value := os.Getenv(key)
+	value := strings.TrimSpace(os.Getenv(key))
 
 	if value == "" {
 		return fallback
 	}
 
 	return value
+}
+
+func parseLogLevel(value string) (slog.Level, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "info":
+		return slog.LevelInfo, nil
+	case "debug":
+		return slog.LevelDebug, nil
+	case "warn", "warning":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
+	default:
+		return 0, fmt.Errorf("invalid LOG_LEVEL %q", value)
+	}
 }
 
 func parseTelegramAllowedUserIDs(value string) ([]int64, error) {

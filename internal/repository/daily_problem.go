@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,7 +21,10 @@ func NewDailyProblemRepository(db *pgxpool.Pool) *DailyProblemRepository {
 	}
 }
 
-func (r *DailyProblemRepository) GetByDate(ctx context.Context, date time.Time) (*model.DailyProblem, error) {
+// GetByDate looks up the problem assigned to an IST calendar date, passed as
+// a YYYY-MM-DD string so the comparison never depends on the database session
+// timezone.
+func (r *DailyProblemRepository) GetByDate(ctx context.Context, date string) (*model.DailyProblem, error) {
 	query := `SELECT id,assigned_date,contest_id,problem_index,name,rating,url,tags FROM daily_problems WHERE assigned_date = $1::date`
 
 	var problem model.DailyProblem
@@ -56,8 +58,8 @@ func (r *DailyProblemRepository) GetByDate(ctx context.Context, date time.Time) 
 	return &problem, nil
 }
 
-func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.Problem, date time.Time) (*model.DailyProblem, error) {
-	query := `INSERT INTO daily_problems (assigned_date, contest_id, problem_index,name,rating,url,tags) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (assigned_date) DO NOTHING RETURNING id,assigned_date, contest_id, problem_index,name,rating,url,tags`
+func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.Problem, date string) (*model.DailyProblem, error) {
+	query := `INSERT INTO daily_problems (assigned_date, contest_id, problem_index,name,rating,url,tags) VALUES ($1::date,$2,$3,$4,$5,$6,$7) ON CONFLICT (assigned_date) DO NOTHING RETURNING id,assigned_date, contest_id, problem_index,name,rating,url,tags`
 
 	var dailyproblem model.DailyProblem
 
@@ -101,6 +103,40 @@ func (r *DailyProblemRepository) Create(ctx context.Context, problem codeforces.
 	}
 
 	return nil, fmt.Errorf("creating daily problem: %w", err)
+}
+
+// GetAssignedKeys returns the set of problems that have already been handed
+// out, keyed the same way codeforces.Problem.Key does, so a new assignment can
+// avoid repeating one.
+func (r *DailyProblemRepository) GetAssignedKeys(ctx context.Context) (map[string]bool, error) {
+	query := `SELECT contest_id, problem_index FROM daily_problems`
+
+	rows, err := r.db.Query(ctx, query)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting assigned problems: %w", err)
+	}
+
+	defer rows.Close()
+
+	keys := make(map[string]bool)
+
+	for rows.Next() {
+		var contestID int
+		var problemIndex string
+
+		if err := rows.Scan(&contestID, &problemIndex); err != nil {
+			return nil, fmt.Errorf("scanning assigned problem: %w", err)
+		}
+
+		keys[fmt.Sprintf("%d%s", contestID, problemIndex)] = true
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating assigned problems: %w", err)
+	}
+
+	return keys, nil
 }
 
 func (r *DailyProblemRepository) GetByID(ctx context.Context, id int64) (*model.DailyProblem, error) {

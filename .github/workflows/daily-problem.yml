@@ -2,31 +2,37 @@ name: CF Daily Scheduler
 
 on:
   schedule:
-    - cron: "30 8 * * *"
-    - cron: "0 18 * * *"
-  
-  # workflow_dispatch:
-  #   inputs:
-  #     jobs:
-  #       description: "What do you want to trigger?"
-  #       required: true
-  #       type: choice
-  #       options:
-  #         - daily
-  #         - reminder
+    # 06:00 UTC = 11:30 AM IST -> send the daily problem
+    - cron: "0 6 * * *"
+    # 17:00 UTC = 10:30 PM IST -> remind to solve/submit
+    - cron: "0 17 * * *"
+
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "What do you want to trigger?"
+        required: true
+        type: choice
+        options:
+          - daily
+          - reminder
+
+concurrency:
+  group: cf-daily-scheduler
+  cancel-in-progress: false
 
 jobs:
 
   daily-problem:
     name: Send Daily Problem
     if: |
-      github.event.schedule == '30 8 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'daily')
+      github.event.schedule == '0 6 * * *' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'daily')
 
     runs-on: ubuntu-latest
 
     steps:
       - name: Send today's problem
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 8 * * *'
         run: |
           echo "Sending today's codeforces problem..."
 
@@ -38,15 +44,15 @@ jobs:
           echo "Daily problem sent successfully"
 
   nightly-reminder:
-    name: Send 11:30PM Reminder
+    name: Send 10:30PM Reminder
     if: |
-      github.event.schedule == '0 18 * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'reminder')
+      github.event.schedule == '0 17 * * *' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'reminder')
 
     runs-on: ubuntu-latest
 
     steps:
       - name: Send nightly reminder
-        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 18 * * *'
         run: |
           echo "Sending nightly reminder..."
 

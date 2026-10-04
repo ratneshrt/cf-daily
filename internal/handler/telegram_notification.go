@@ -1,10 +1,18 @@
 package handler
 
 import (
+	"context"
+	"crypto/subtle"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ratneshrt/cf-daily/internal/service"
 )
+
+// cronTimeout bounds a scheduled send: fetching the problemset and messaging
+// every user should take seconds, not minutes.
+const cronTimeout = 2 * time.Minute
 
 type TelegramNotificationHandler struct {
 	notificationService *service.TelegramNotificationService
@@ -20,6 +28,12 @@ func NewTelegramNotificationHandler(notificationService *service.TelegramNotific
 	}
 }
 
+func (h *TelegramNotificationHandler) authorized(r *http.Request) bool {
+	provided := r.Header.Get("X-Cron-Secret")
+
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.cronSecret)) == 1
+}
+
 func (h *TelegramNotificationHandler) SendDailyProblem(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
@@ -31,7 +45,7 @@ func (h *TelegramNotificationHandler) SendDailyProblem(w http.ResponseWriter, r 
 		return
 	}
 
-	if r.Header.Get("X-Cron-Secret") != h.cronSecret {
+	if !h.authorized(r) {
 		http.Error(
 			w,
 			"unauthorized",
@@ -41,11 +55,14 @@ func (h *TelegramNotificationHandler) SendDailyProblem(w http.ResponseWriter, r 
 		return
 	}
 
-	err := h.notificationService.SendTodayProblem(
-		r.Context(),
-	)
+	ctx, cancel := context.WithTimeout(r.Context(), cronTimeout)
+	defer cancel()
+
+	err := h.notificationService.SendTodayProblem(ctx)
 
 	if err != nil {
+		slog.Error("failed to send daily problem", "error", err)
+
 		http.Error(
 			w,
 			"failed to send daily problem",
@@ -72,7 +89,7 @@ func (h *TelegramNotificationHandler) SendReminder(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if r.Header.Get("X-Cron-Secret") != h.cronSecret {
+	if !h.authorized(r) {
 		http.Error(
 			w,
 			"unauthorized",
@@ -81,14 +98,17 @@ func (h *TelegramNotificationHandler) SendReminder(w http.ResponseWriter, r *htt
 		return
 	}
 
-	err := h.reminderService.SendNightlyReminder(
-		r.Context(),
-	)
+	ctx, cancel := context.WithTimeout(r.Context(), cronTimeout)
+	defer cancel()
+
+	err := h.reminderService.SendNightlyReminder(ctx)
 
 	if err != nil {
+		slog.Error("failed to send reminder", "error", err)
+
 		http.Error(
 			w,
-			"failed to send daily reminder",
+			"failed to send reminder",
 			http.StatusInternalServerError,
 		)
 
@@ -98,6 +118,6 @@ func (h *TelegramNotificationHandler) SendReminder(w http.ResponseWriter, r *htt
 	w.WriteHeader(http.StatusOK)
 
 	_, _ = w.Write(
-		[]byte("daily problem sent"),
+		[]byte("reminder sent"),
 	)
 }

@@ -18,6 +18,7 @@ import (
 
 type GitHubService struct {
 	appID          int64
+	appSlug        string
 	clientID       string
 	clientSecret   string
 	privateKey     *rsa.PrivateKey
@@ -64,15 +65,16 @@ type installationTokenResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func NewGitHubService(appID int64, clientID string, clientSecret string, privateKeyPEM string, callbackURL string, repositoryName string) *GitHubService {
+func NewGitHubService(appID int64, appSlug string, clientID string, clientSecret string, privateKeyPEM string, callbackURL string, repositoryName string) (*GitHubService, error) {
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKeyPEM))
 
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("parsing github app private key: %w", err)
 	}
 
 	return &GitHubService{
 		appID:        appID,
+		appSlug:      appSlug,
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		privateKey:   key,
@@ -81,7 +83,7 @@ func NewGitHubService(appID int64, clientID string, clientSecret string, private
 			Timeout: 15 * time.Second,
 		},
 		repositoryName: repositoryName,
-	}
+	}, nil
 }
 
 func (s *GitHubService) generateAppJWT() (string, error) {
@@ -110,11 +112,14 @@ func (s *GitHubService) generateAppJWT() (string, error) {
 	return signed, nil
 }
 
-func (s *GitHubService) GetUserInstallation(ctx context.Context, username string) (int64, error) {
+// GetUserInstallation returns the installation id and the login of the
+// account the app is installed on. That account - not the authenticated user -
+// owns the repository, which differs for organisation installations.
+func (s *GitHubService) GetUserInstallation(ctx context.Context, username string) (int64, string, error) {
 
 	appJWT, err := s.generateAppJWT()
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 
 	endpoint := fmt.Sprintf(
@@ -130,7 +135,7 @@ func (s *GitHubService) GetUserInstallation(ctx context.Context, username string
 	)
 
 	if err != nil {
-		return 0, fmt.Errorf("creating github installation request: %w", err)
+		return 0, "", fmt.Errorf("creating github installation request: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -142,7 +147,7 @@ func (s *GitHubService) GetUserInstallation(ctx context.Context, username string
 	resp, err := s.httpClient.Do(req)
 
 	if err != nil {
-		return 0, fmt.Errorf(
+		return 0, "", fmt.Errorf(
 			"getting github installation: %w",
 			err,
 		)
@@ -151,7 +156,7 @@ func (s *GitHubService) GetUserInstallation(ctx context.Context, username string
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf(
+		return 0, "", fmt.Errorf(
 			"github installation lookup returned status %d",
 			resp.StatusCode,
 		)
@@ -160,13 +165,13 @@ func (s *GitHubService) GetUserInstallation(ctx context.Context, username string
 	var result githubInstallationResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf(
+		return 0, "", fmt.Errorf(
 			"decoding github installation: %w",
 			err,
 		)
 	}
 
-	return result.ID, nil
+	return result.ID, result.Account.Login, nil
 }
 
 func (s *GitHubService) GetInstallationToken(ctx context.Context, installationID int64) (string, error) {
@@ -232,7 +237,11 @@ func (s *GitHubService) InstallationURL(state string) string {
 		state,
 	)
 
-	return "https://github.com/apps/8pieces/installations/new?" + values.Encode()
+	return fmt.Sprintf(
+		"https://github.com/apps/%s/installations/new?%s",
+		url.PathEscape(s.appSlug),
+		values.Encode(),
+	)
 }
 
 func (s *GitHubService) ExchangeCode(
@@ -365,7 +374,7 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 
 	payload := map[string]any{
 		"name":        s.repositoryName,
-		"description": "Codeforces solutions managed by 8pieces",
+		"description": "Codeforces solutions managed by cf-daily",
 		"private":     false,
 		"auto_init":   true,
 	}
@@ -456,50 +465,6 @@ func (s *GitHubService) CreateRepository(ctx context.Context, accessToken string
 	)
 }
 
-func (s *GitHubService) GetRepository(ctx context.Context, installationID int64, owner string) error {
-
-	token, err := s.GetInstallationToken(ctx, installationID)
-
-	if err != nil {
-		return err
-	}
-
-	endpoint := fmt.Sprintf("https://api.github.com/repos/%s/%s", url.PathEscape(owner), url.PathEscape(s.repositoryName))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-
-	if err != nil {
-		return fmt.Errorf("creating github repository lookup req: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
-
-	resp, err := s.httpClient.Do(req)
-
-	if err != nil {
-		return fmt.Errorf("checking github repository: %w", err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		return nil
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("github respository %s/%s does not exist", owner, s.repositoryName)
-	}
-
-	bodyBytes, _ := io.ReadAll(resp.Body)
-
-	return fmt.Errorf("github repository lookup failed: status=%d body=%s", resp.StatusCode, string(bodyBytes))
-
-}
-
 func (s *GitHubService) GetExistingRepository(ctx context.Context, access_token string) (*GitHubRepository, error) {
 	user, err := s.GetAuthenticatedUser(ctx, access_token)
 
@@ -542,15 +507,16 @@ func (s *GitHubService) GetExistingRepository(ctx context.Context, access_token 
 	return &repo, nil
 }
 
-func buildSolutionPath(contestID int, problemIndex string, problemName string) string {
+func buildSolutionPath(contestID int, problemIndex string, problemName string, language string) string {
 	name := sanitizerProblemName(problemName)
 
 	return fmt.Sprintf(
-		"%d/%d%s-%s/solution.cpp",
+		"%d/%d%s-%s/solution.%s",
 		contestID,
 		contestID,
 		problemIndex,
 		name,
+		languageExtension(language),
 	)
 }
 

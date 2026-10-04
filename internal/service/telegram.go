@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ratneshrt/cf-daily/internal/model"
 	"github.com/ratneshrt/cf-daily/internal/repository"
 	"github.com/ratneshrt/cf-daily/internal/telegram"
 )
@@ -38,59 +39,87 @@ func (s *TelegramService) HandleUpdate(
 	update telegram.Update,
 ) error {
 	if update.Message == nil {
-		slog.Info("telegram update has no message")
+		slog.Debug("telegram update has no message")
 		return nil
 	}
 
 	if update.Message.From == nil {
-		slog.Info("telegram message has no sender")
+		slog.Debug("telegram message has no sender")
 		return nil
 	}
 
 	slog.Info(
 		"telegram update received",
+		"update_id",
+		update.UpdateID,
 		"message_id",
 		update.Message.MessageID,
 		"user_id",
 		update.Message.From.ID,
-		"text",
-		update.Message.Text,
 		"has_reply",
 		update.Message.ReplyToMessage != nil,
 	)
 
-	text := strings.TrimSpace(update.Message.Text)
+	err := s.route(ctx, update.Message)
+
+	if err == nil {
+		return nil
+	}
+
+	// The webhook always acknowledges, so an internal failure would otherwise
+	// be silent from the chat's point of view.
+	slog.Error(
+		"failed to handle telegram command",
+		"update_id",
+		update.UpdateID,
+		"user_id",
+		update.Message.From.ID,
+		"error",
+		err,
+	)
+
+	if notifyErr := s.sendMessage(
+		ctx,
+		update.Message.Chat.ID,
+		"Something went wrong handling that command. Please try again.",
+	); notifyErr != nil {
+		slog.Error(
+			"failed to report command failure to user",
+			"error",
+			notifyErr,
+		)
+	}
+
+	return err
+}
+
+func (s *TelegramService) route(ctx context.Context, message *telegram.Message) error {
+	text := strings.TrimSpace(message.Text)
 
 	switch {
 	case strings.HasPrefix(text, "/start"):
-		slog.Info("routing to start")
-		return s.handleStart(ctx, update.Message)
+		return s.handleStart(ctx, message)
+
+	case strings.HasPrefix(text, "/stop"):
+		return s.handleStop(ctx, message)
 
 	case strings.HasPrefix(text, "/help"):
-		slog.Info("routing to help")
-		return s.handleHelp(ctx, update.Message)
+		return s.handleHelp(ctx, message)
 
 	case strings.HasPrefix(text, "/submit"):
-		slog.Info("routing to submit")
-		return s.handleSubmit(ctx, update.Message)
+		return s.handleSubmit(ctx, message)
 
 	case strings.HasPrefix(text, "/edit"):
-		slog.Info("routing to edit")
-		return s.handleEdit(ctx, update.Message)
+		return s.handleEdit(ctx, message)
 
 	case strings.HasPrefix(text, "/delete"):
-		slog.Info("routing to delete")
-		return s.handleDelete(ctx, update.Message)
+		return s.handleDelete(ctx, message)
 
 	case strings.HasPrefix(text, "/connect"):
-		return s.handleConnectGitHub(ctx, update.Message)
+		return s.handleConnectGitHub(ctx, message)
 
 	default:
-		slog.Info(
-			"unknown telegram command",
-			"text",
-			update.Message.Text,
-		)
+		slog.Debug("unknown telegram command", "text", text)
 		return nil
 	}
 }
@@ -109,8 +138,7 @@ func (s *TelegramService) handleConnectGitHub(ctx context.Context, message *tele
 
 	expiresAt := time.Now().Add(10 * time.Minute)
 
-	slog.Info("github connect state generated", "telegram_user_id", userID, "state", state, "expires_at", expiresAt)
-
+	// The state is a single use credential, so it is never logged.
 	err = s.githubStateRepository.Create(
 		ctx,
 		state,
@@ -119,15 +147,17 @@ func (s *TelegramService) handleConnectGitHub(ctx context.Context, message *tele
 	)
 
 	if err != nil {
-		slog.Error("github connect state create failed", "telegram_user_id", userID, "state", state, "error", err)
-
 		return fmt.Errorf(
 			"saving github connection state: %w",
 			err,
 		)
 	}
 
-	slog.Info("github connect state saved", "telegram_user_id", userID, "state", state)
+	slog.Info(
+		"github connect state saved",
+		"telegram_user_id", userID,
+		"expires_at", expiresAt,
+	)
 
 	authURL := s.githubService.InstallationURL(state)
 
@@ -135,7 +165,7 @@ func (s *TelegramService) handleConnectGitHub(ctx context.Context, message *tele
 		ctx,
 		message.Chat.ID,
 		"🔗 Connect your GitHub account\n\n"+
-			"Install Flux on your GitHub account and "+
+			"Install the app on your GitHub account and "+
 			"authorize it to manage your CF solutions.\n\n"+
 			authURL,
 	)
@@ -168,21 +198,23 @@ func (s *TelegramService) handleStart(ctx context.Context, message *telegram.Mes
 				"creating telegram user: %w",
 				err,
 			)
-		} else {
-			user, err = s.userRepository.Activate(
-				ctx,
-				message.From.ID,
-				message.Chat.ID,
-				message.From.Username,
-				message.From.FirstName,
-			)
+		}
+	} else {
+		// Also refreshes the chat id, username and first name, and brings back
+		// a user who previously ran /stop.
+		user, err = s.userRepository.Activate(
+			ctx,
+			message.From.ID,
+			message.Chat.ID,
+			message.From.Username,
+			message.From.FirstName,
+		)
 
-			if err != nil {
-				return fmt.Errorf(
-					"activating telegram user: %w",
-					err,
-				)
-			}
+		if err != nil {
+			return fmt.Errorf(
+				"activating telegram user: %w",
+				err,
+			)
 		}
 	}
 
@@ -193,84 +225,134 @@ func (s *TelegramService) handleStart(ctx context.Context, message *telegram.Mes
 		user.FirstName,
 	)
 
-	_, err = s.telegramClient.SendMessage(
-		ctx,
-		user.ChatID,
-		text,
-	)
+	return s.sendMessage(ctx, user.ChatID, text)
+}
+
+func (s *TelegramService) handleStop(ctx context.Context, message *telegram.Message) error {
+	user, err := s.userRepository.GetByTelegramUserID(ctx, message.From.ID)
 
 	if err != nil {
-		return fmt.Errorf(
-			"sendinf welcome message: %w",
-			err,
+		return fmt.Errorf("checking telegram user: %w", err)
+	}
+
+	if user == nil {
+		return s.sendError(
+			ctx,
+			message.Chat.ID,
+			"You are not registered. Use /start first.",
 		)
 	}
 
-	return nil
+	if err := s.userRepository.Deactivate(ctx, message.From.ID); err != nil {
+		return fmt.Errorf("deactivating telegram user: %w", err)
+	}
+
+	return s.sendMessage(
+		ctx,
+		message.Chat.ID,
+		"Daily problems paused. Use /start to resume.\n\n"+
+			"Your saved solutions are untouched.",
+	)
 }
 
 func (s *TelegramService) handleHelp(ctx context.Context, message *telegram.Message) error {
 	text := `CF Daily Commands
 
-/start - Register or activate your account
+/start - Register, or resume daily problems
+/stop - Pause daily problems
+/connect - Connect your GitHub account
 /help - Show available commands
 
-Reply to a daily problem:
-
 /submit
-<your code> -> to edit your code
+<your code> -> save your solution
 
 /edit
-<new code> -> to edit your code
+<new code> -> replace your solution
 
-/delete -> to delete your code
+/delete -> delete your solution
 
+Reply to a daily problem message to target that
+problem. Without a reply, the most recent problem
+sent to you is used.
 `
 
-	_, err := s.telegramClient.SendMessage(
+	return s.sendMessage(ctx, message.Chat.ID, text)
+}
+
+// resolveProblemMessage works out which daily problem a command refers to.
+//
+// It first tries the message the user replied to, so replying to an older daily
+// problem message still attaches the code to that older problem. When the
+// replied-to message is not a recorded daily problem message - a reply to the
+// nightly reminder, a reply to one of the bot's own answers, or no reply at all
+// - it falls back to the most recent daily problem sent to that user.
+func (s *TelegramService) resolveProblemMessage(ctx context.Context, message *telegram.Message) (*model.TelegramProblemMessage, error) {
+	userID := message.From.ID
+
+	if message.ReplyToMessage != nil {
+		problemMessage, err := s.problemMessageRepository.GetByMessageID(
+			ctx,
+			userID,
+			message.ReplyToMessage.MessageID,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("getting problem message: %w", err)
+		}
+
+		if problemMessage != nil {
+			return problemMessage, nil
+		}
+
+		slog.Info(
+			"replied-to message is not a daily problem message, falling back to latest",
+			"telegram_user_id", userID,
+			"reply_message_id", message.ReplyToMessage.MessageID,
+		)
+	}
+
+	problemMessage, err := s.problemMessageRepository.GetLatestByUser(ctx, userID)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting latest problem message: %w", err)
+	}
+
+	return problemMessage, nil
+}
+
+// connectedUser loads the sender and verifies their GitHub connection.
+func (s *TelegramService) connectedUser(ctx context.Context, userID int64) (*model.TelegramUser, error) {
+	user, err := s.userRepository.GetByTelegramUserID(ctx, userID)
+
+	if err != nil {
+		return nil, fmt.Errorf("getting telegram user: %w", err)
+	}
+
+	if user == nil || user.GithubUsername == nil || user.GithubInstallationID == nil {
+		return nil, nil
+	}
+
+	return user, nil
+}
+
+// problemFor loads the problem a resolved problem message points at.
+func (s *TelegramService) problemFor(ctx context.Context, problemMessage *model.TelegramProblemMessage) (*model.DailyProblem, error) {
+	problem, err := s.dailyProblemRepository.GetByID(
 		ctx,
-		message.Chat.ID,
-		text,
+		problemMessage.DailyProblemID,
 	)
 
 	if err != nil {
-		return fmt.Errorf(
-			"sending help message: %w",
-			err,
-		)
+		return nil, fmt.Errorf("getting daily problem: %w", err)
 	}
 
-	return nil
+	return problem, nil
 }
 
 func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Message) error {
-
-	if message.ReplyToMessage == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"Please reply to the daily problem message.\n\n"+
-				"Example:\n\n"+
-				"/submit\n"+
-				"<your code>",
-		)
-	}
-
-	slog.Info(
-		"handleSubmit called",
-		"message_id",
-		message.MessageID,
-		"user_id",
-		message.From.ID,
-		"text",
-		message.Text,
-		"has_reply",
-		message.ReplyToMessage != nil,
-	)
-
 	parts := strings.SplitN(message.Text, "\n", 2)
 
-	if len(parts) < 2 || parts[1] == "" {
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
@@ -285,31 +367,28 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 
 	userID := message.From.ID
 
-	replyMessageID := message.ReplyToMessage.MessageID
-
-	slog.Info(
-		"looking up telegram problem message",
-		"telegram_user_id", userID,
-		"reply_message_id", replyMessageID,
-	)
-
-	problemMessage, err := s.problemMessageRepository.GetByMessageID(
-		ctx,
-		userID,
-		replyMessageID,
-	)
+	problemMessage, err := s.resolveProblemMessage(ctx, message)
 
 	if err != nil {
-		return fmt.Errorf("getting problem message: %w", err)
+		return err
 	}
 
 	if problemMessage == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"I couldn't find the problem you replied to.\n\n"+
-				"Please reply directly to the daily problem message.",
+			"No daily problem has been sent to you yet, so there is nothing to submit against.",
 		)
+	}
+
+	problem, err := s.problemFor(ctx, problemMessage)
+
+	if err != nil {
+		return err
+	}
+
+	if problem == nil {
+		return s.sendError(ctx, message.Chat.ID, "Daily problem not found.")
 	}
 
 	existing, err := s.submissionRepository.Get(
@@ -326,47 +405,21 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"⚠️ You already submitted a solution for this problem.\n\n"+
-				"Use /edit to replace it.",
+			fmt.Sprintf(
+				"⚠️ You already submitted a solution for %s.\n\n"+
+					"Use /edit to replace it.",
+				problem.Name,
+			),
 		)
 	}
 
-	problem, err := s.dailyProblemRepository.GetByID(
-		ctx,
-		problemMessage.DailyProblemID,
-	)
+	user, err := s.connectedUser(ctx, userID)
 
 	if err != nil {
-		return fmt.Errorf(
-			"getting daily problem: %w",
-			err,
-		)
+		return err
 	}
 
-	if problem == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"Daily problem not found.",
-		)
-	}
-
-	user, err := s.userRepository.GetByTelegramUserID(
-		ctx,
-		userID,
-	)
-
-	if err != nil {
-		return fmt.Errorf(
-			"getting telegram user: %w",
-			err,
-		)
-	}
-
-	if user == nil ||
-		user.GithubUsername == nil ||
-		user.GithubInstallationID == nil {
-
+	if user == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
@@ -374,11 +427,26 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 		)
 	}
 
+	language := detectLanguage(code)
+
 	path := buildSolutionPath(
 		problem.ContestID,
 		problem.ProblemIndex,
 		problem.Name,
+		language,
 	)
+
+	// The submission is recorded first and rolled back if the push fails, so a
+	// failed command never leaves a commit without a matching row.
+	if _, err := s.submissionRepository.Create(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+		code,
+		language,
+	); err != nil {
+		return fmt.Errorf("creating submission: %w", err)
+	}
 
 	err = s.githubService.CreateOrUpdateFile(
 		ctx,
@@ -403,43 +471,40 @@ func (s *TelegramService) handleSubmit(ctx context.Context, message *telegram.Me
 			"error", err,
 		)
 
+		if rollbackErr := s.submissionRepository.Delete(
+			ctx,
+			userID,
+			problemMessage.DailyProblemID,
+		); rollbackErr != nil {
+			slog.Error(
+				"failed to roll back submission after github failure",
+				"telegram_user_id", userID,
+				"daily_problem_id", problem.ID,
+				"error", rollbackErr,
+			)
+		}
+
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"Failed to push your solution to GitHub.",
+			"Failed to push your solution to GitHub. Nothing was saved, please try again.",
 		)
-	}
-
-	_, err = s.submissionRepository.Create(
-		ctx,
-		userID,
-		problemMessage.DailyProblemID,
-		code,
-	)
-
-	if err != nil {
-		return fmt.Errorf("creating submission: %w", err)
 	}
 
 	return s.sendMessage(
 		ctx,
 		message.Chat.ID,
-		"✅ Your solution has been saved!",
+		fmt.Sprintf(
+			"✅ Your solution for %s has been saved!",
+			problem.Name,
+		),
 	)
 }
 
 func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Message) error {
-	if message.ReplyToMessage == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"Please reply to the daily problem message.",
-		)
-	}
-
 	parts := strings.SplitN(message.Text, "\n", 2)
 
-	if len(parts) < 2 || parts[1] == "" {
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
@@ -453,28 +518,29 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 	code := parts[1]
 
 	userID := message.From.ID
-	replyMessageID := message.ReplyToMessage.MessageID
 
-	problemMessage, err := s.problemMessageRepository.GetByMessageID(
-		ctx,
-		userID,
-		replyMessageID,
-	)
+	problemMessage, err := s.resolveProblemMessage(ctx, message)
 
 	if err != nil {
-		return fmt.Errorf(
-			"getting problem message: %w",
-			err,
-		)
+		return err
 	}
 
 	if problemMessage == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"You don't have a submission for this problem yet.\n\n"+
-				"Use /submit first.",
+			"No daily problem has been sent to you yet, so there is nothing to edit.",
 		)
+	}
+
+	problem, err := s.problemFor(ctx, problemMessage)
+
+	if err != nil {
+		return err
+	}
+
+	if problem == nil {
+		return s.sendError(ctx, message.Chat.ID, "Daily problem not found.")
 	}
 
 	existing, err := s.submissionRepository.Get(
@@ -494,34 +560,65 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"You don't have a submission for this problem yet.\n\n"+
-				"Use /submit first.",
+			fmt.Sprintf(
+				"You don't have a submission for %s yet.\n\n"+
+					"Use /submit first.",
+				problem.Name,
+			),
 		)
 	}
 
-	problem, err := s.dailyProblemRepository.GetByID(ctx, problemMessage.DailyProblemID)
+	user, err := s.connectedUser(ctx, userID)
 
 	if err != nil {
-		return fmt.Errorf("getting daily problem: %w", err)
+		return err
 	}
 
-	if problem == nil {
-		return s.sendError(ctx, message.Chat.ID, "Daily problem not found")
+	if user == nil {
+		return s.sendError(ctx, message.Chat.ID, "Please connect GitHub first using /connect.")
 	}
 
-	user, err := s.userRepository.GetByTelegramUserID(ctx, userID)
+	previousLanguage := submissionLanguage(existing.Language)
 
-	if err != nil {
-		return fmt.Errorf("getting telegram user: %w", err)
+	previousPath := buildSolutionPath(
+		problem.ContestID,
+		problem.ProblemIndex,
+		problem.Name,
+		previousLanguage,
+	)
+
+	language := detectLanguage(code)
+
+	path := buildSolutionPath(
+		problem.ContestID,
+		problem.ProblemIndex,
+		problem.Name,
+		language,
+	)
+
+	if _, err := s.submissionRepository.Update(
+		ctx,
+		userID,
+		problemMessage.DailyProblemID,
+		code,
+		language,
+	); err != nil {
+		return fmt.Errorf("updating submission: %w", err)
 	}
 
-	if user == nil || user.GithubUsername == nil || user.GithubInstallationID == nil {
-		return s.sendError(ctx, message.Chat.ID, "Please connect Github first using /connect")
-	}
-
-	path := buildSolutionPath(problem.ContestID, problem.ProblemIndex, problem.Name)
-
-	err = s.githubService.CreateOrUpdateFile(ctx, *user.GithubInstallationID, *user.GithubUsername, path, code, fmt.Sprintf("update solution for %d%s - %s", problem.ContestID, problem.ProblemIndex, problem.Name))
+	err = s.githubService.CreateOrUpdateFile(
+		ctx,
+		*user.GithubInstallationID,
+		*user.GithubUsername,
+		path,
+		code,
+		fmt.Sprintf(
+			"Update solution for %d%s - %s",
+			problem.ContestID,
+			problem.ProblemIndex,
+			problem.Name,
+		),
+	)
 
 	if err != nil {
 		slog.Error(
@@ -532,69 +629,87 @@ func (s *TelegramService) handleEdit(ctx context.Context, message *telegram.Mess
 			"error", err,
 		)
 
+		if _, rollbackErr := s.submissionRepository.Update(
+			ctx,
+			userID,
+			problemMessage.DailyProblemID,
+			existing.Code,
+			previousLanguage,
+		); rollbackErr != nil {
+			slog.Error(
+				"failed to roll back submission after github failure",
+				"telegram_user_id", userID,
+				"daily_problem_id", problem.ID,
+				"error", rollbackErr,
+			)
+		}
+
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"Failed to update your solution on GitHub.",
+			"Failed to update your solution on GitHub. Your saved solution was left unchanged.",
 		)
 	}
 
-	_, err = s.submissionRepository.Update(
-		ctx,
-		userID,
-		problemMessage.DailyProblemID,
-		code,
-	)
-
-	if err != nil {
-		return fmt.Errorf(
-			"updating submission: %w",
-			err,
-		)
+	// A different language means a different file name, so the old file would
+	// otherwise be left behind.
+	if path != previousPath {
+		if err := s.githubService.DeleteFile(
+			ctx,
+			*user.GithubInstallationID,
+			*user.GithubUsername,
+			previousPath,
+			fmt.Sprintf(
+				"Remove superseded solution for %d%s - %s",
+				problem.ContestID,
+				problem.ProblemIndex,
+				problem.Name,
+			),
+		); err != nil {
+			slog.Warn(
+				"failed to remove superseded solution file",
+				"telegram_user_id", userID,
+				"path", previousPath,
+				"error", err,
+			)
+		}
 	}
 
 	return s.sendMessage(
 		ctx,
 		message.Chat.ID,
-		"✏️ Your solution has been updated!",
+		fmt.Sprintf(
+			"✏️ Your solution for %s has been updated!",
+			problem.Name,
+		),
 	)
 }
 
 func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Message) error {
-	if message.ReplyToMessage == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"Please reply to the daily problem message.\n\n"+
-				"Use:\n\n"+
-				"/delete",
-		)
-	}
-
 	userID := message.From.ID
 
-	replyMessageID := message.ReplyToMessage.MessageID
-
-	problemMessage, err := s.problemMessageRepository.GetByMessageID(
-		ctx,
-		userID,
-		replyMessageID,
-	)
+	problemMessage, err := s.resolveProblemMessage(ctx, message)
 
 	if err != nil {
-		return fmt.Errorf(
-			"getting problem message: %w",
-			err,
-		)
+		return err
 	}
 
 	if problemMessage == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"I couldn't find the problem you replied to.\n\n"+
-				"Please reply directly to the daily problem message.",
+			"No daily problem has been sent to you yet, so there is nothing to delete.",
 		)
+	}
+
+	problem, err := s.problemFor(ctx, problemMessage)
+
+	if err != nil {
+		return err
+	}
+
+	if problem == nil {
+		return s.sendError(ctx, message.Chat.ID, "Daily problem not found.")
 	}
 
 	submission, err := s.submissionRepository.Get(
@@ -614,46 +729,20 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
-			"You don't have a submitted solution for this problem.",
+			fmt.Sprintf(
+				"You don't have a submitted solution for %s.",
+				problem.Name,
+			),
 		)
 	}
 
-	problem, err := s.dailyProblemRepository.GetByID(
-		ctx,
-		problemMessage.DailyProblemID,
-	)
+	user, err := s.connectedUser(ctx, userID)
 
 	if err != nil {
-		return fmt.Errorf(
-			"getting daily problem: %w",
-			err,
-		)
+		return err
 	}
 
-	if problem == nil {
-		return s.sendError(
-			ctx,
-			message.Chat.ID,
-			"Daily problem not found.",
-		)
-	}
-
-	user, err := s.userRepository.GetByTelegramUserID(
-		ctx,
-		userID,
-	)
-
-	if err != nil {
-		return fmt.Errorf(
-			"getting telegram user: %w",
-			err,
-		)
-	}
-
-	if user == nil ||
-		user.GithubUsername == nil ||
-		user.GithubInstallationID == nil {
-
+	if user == nil {
 		return s.sendError(
 			ctx,
 			message.Chat.ID,
@@ -665,8 +754,11 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 		problem.ContestID,
 		problem.ProblemIndex,
 		problem.Name,
+		submissionLanguage(submission.Language),
 	)
 
+	// The file is removed first: if the database delete then fails the code is
+	// still recorded, which is the recoverable order.
 	err = s.githubService.DeleteFile(
 		ctx,
 		*user.GithubInstallationID,
@@ -712,7 +804,10 @@ func (s *TelegramService) handleDelete(ctx context.Context, message *telegram.Me
 	return s.sendMessage(
 		ctx,
 		message.Chat.ID,
-		"🗑️ Your solution has been deleted successfully.",
+		fmt.Sprintf(
+			"🗑️ Your solution for %s has been deleted.",
+			problem.Name,
+		),
 	)
 }
 

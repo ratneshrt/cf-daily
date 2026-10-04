@@ -79,6 +79,39 @@ func (r *TelegramProblemMessageRepository) GetByMessageID(ctx context.Context, t
 	return &message, nil
 }
 
+// GetLatestByUser returns the most recent daily problem message sent to a user,
+// or nil when the user has never been sent one.
+func (r *TelegramProblemMessageRepository) GetLatestByUser(ctx context.Context, telegramUserID int64) (*model.TelegramProblemMessage, error) {
+	query := `SELECT id,telegram_user_id,daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 ORDER BY sent_at DESC, id DESC LIMIT 1`
+
+	var message model.TelegramProblemMessage
+
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		telegramUserID,
+	).Scan(
+		&message.ID,
+		&message.TelegramUserID,
+		&message.DailyProblemID,
+		&message.TelegramMessageID,
+		&message.SentAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"getting latest telegram problem message: %w",
+			err,
+		)
+	}
+
+	return &message, nil
+}
+
 func (r *TelegramProblemMessageRepository) GetByUserAndProblem(ctx context.Context, telegramUserID int64, dailyProblemID int64) (*model.TelegramProblemMessage, error) {
 	query := `SELECT id, telegram_user_id, daily_problem_id,telegram_message_id,sent_at FROM telegram_problem_messages WHERE telegram_user_id = $1 AND daily_problem_id = $2 LIMIT 1`
 
